@@ -96,7 +96,7 @@ function Debug_Screen()
 		
 		var strings = Object.keys( this.string_map );
 		
-		for( var i = 0, idx = this.start_index; i < 2 && i < strings.length; i++, idx = (idx + 1) % strings.length )
+		for( var i = 0, idx = this.start_index; i < 4 && i < strings.length; i++, idx = (idx + 1) % strings.length )
 		{
 			this.m_text.set_string( this.string_map[ strings[idx] ] );
 			this.m_text.draw( this.graphicsState, model_transform, true, vec4(0,0,0,1) );		// Comment this out to not display any strings on the UI			
