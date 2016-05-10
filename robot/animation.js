@@ -17,14 +17,31 @@ function CURRENT_BASIS_IS_WORTH_SHOWING(self, model_transform) { self.m_axis.dra
 
 var texture_filenames_to_load = ["transOrange.png" , "stars.png", "text.png", "earth.gif", "crackedSoil.png", "copy.png" ];
 
+// message that appear on the screen
+var log = "";
+
+var robot;
+var bucket;
+var camera_mode;
+// camera mode
+var CAMERA_FOLLOW_ROBOT = 0;
+var CAMERA_POURING_VIEW = 1;
+var CAMERA_GROWING_GREEN = 2;
+
+// MODE
+var MODE_UP = 0;
+var MODE_DOWN = 1;
+var MODE_RIGHT = 2;
+var MODE_LEFT = 3;
+var MODE_IDLE = 4;
+var MODE_POURING = 5;
 
 function Robot(){
 	this.pos = vec3();
 	this.pos[0] = 20;
 	this.pos[1] = 0;
 	this.pos[2] = 0;
-	
-	this.holdingBucket = false;
+	this.mode = MODE_IDLE;
 }
 
 function Bucket(){
@@ -32,33 +49,21 @@ function Bucket(){
 	// constant
 	this.fullLevel = 4;
 
+	// position
 	this.pos = vec3();
 	this.pos[0] = -10;
 	this.pos[1] = 0;
 	this.pos[2] = 40;
 
+	// water
 	this.isCollectingWater = false;
 	this.containingWater = false;
 	this.waterLevel = 0;
 	this.collisionRadius = 4;
+
+	// movement
+	this.pouring = false;
 }
-
-var robot;
-var bucket;
-
-
-// camera
-var CAMERA_FOLLOW_ROBOT = true;
-// MODE
-var MODE_UP = 0;
-var MODE_DOWN = 1;
-var MODE_RIGHT = 2;
-var MODE_LEFT = 3;
-var MODE_IDLE = 4;
-
-var mode;	
-
-
 
 
 // *******************************************************	
@@ -86,8 +91,8 @@ function Animation()
 		self.m_strip = new rectangular_strip( 1, mat4() );
 		self.m_cylinder = new cylindrical_strip( 10, mat4() );
 		
-		mode = MODE_IDLE;
 		robot = new Robot();
+		camera_mode = CAMERA_FOLLOW_ROBOT;
 		bucket = new Bucket();
 		initRain();
 		// 1st parameter is camera matrix.  2nd parameter is the projection:  The matrix that determines how depth is treated.  It projects 3D points onto a plane.
@@ -105,17 +110,15 @@ function Animation()
 // init_keys():  Define any extra keyboard shortcuts here
 Animation.prototype.init_keys = function()
 {
-	shortcut.add( "Space", function() { CAMERA_FOLLOW_ROBOT = false;
-										thrust[1] = -1; } );			shortcut.add( "Space", function() { CAMERA_FOLLOW_ROBOT = true;	
-																											thrust[1] = 0;}, {'type':'keyup'} );
+	shortcut.add( "Space", function() { thrust[1] = -1; } );				shortcut.add( "Space", function() { thrust[1] = 0;}, {'type':'keyup'} );
 	
-	shortcut.add( "w",     function() { mode = MODE_UP; } );			shortcut.add( "w",     function() { mode = MODE_IDLE; }, {'type':'keyup'} );
-	shortcut.add( "a",     function() { mode = MODE_LEFT } );			shortcut.add( "a",     function() { mode = MODE_IDLE; }, {'type':'keyup'} );
-	shortcut.add( "s",     function() { mode = MODE_DOWN; } );			shortcut.add( "s",     function() { mode = MODE_IDLE; }, {'type':'keyup'} );
-	shortcut.add( "d",     function() { mode = MODE_RIGHT; } );			shortcut.add( "d",     function() { mode = MODE_IDLE; }, {'type':'keyup'} );
+	shortcut.add( "w",     function() { robot.mode = MODE_UP; } );			shortcut.add( "w",     function() { robot.mode = MODE_IDLE; }, {'type':'keyup'} );
+	shortcut.add( "a",     function() { robot.mode = MODE_LEFT } );			shortcut.add( "a",     function() { robot.mode = MODE_IDLE; }, {'type':'keyup'} );
+	shortcut.add( "s",     function() { robot.mode = MODE_DOWN; } );		shortcut.add( "s",     function() { robot.mode = MODE_IDLE; }, {'type':'keyup'} );
+	shortcut.add( "d",     function() { robot.mode = MODE_RIGHT; } );		shortcut.add( "d",     function() { robot.mode = MODE_IDLE; }, {'type':'keyup'} );
 	
 
-	shortcut.add( "z",     function() { CAMERA_FOLLOW_ROBOT = false; thrust[1] =  1; } );			shortcut.add( "z",     function() { CAMERA_FOLLOW_ROBOT = true;	thrust[1] =  0; }, {'type':'keyup'} );
+	shortcut.add( "z",     function() { thrust[1] =  1; } );			shortcut.add( "z",     function() { thrust[1] =  0; }, {'type':'keyup'} );
 	// shortcut.add( "w",     function() { thrust[2] =  1; } );			shortcut.add( "w",     function() { thrust[2] =  0; }, {'type':'keyup'} );
 	// shortcut.add( "a",     function() { thrust[0] =  1; } );			shortcut.add( "a",     function() { thrust[0] =  0; }, {'type':'keyup'} );
 	// shortcut.add( "s",     function() { thrust[2] = -1; } );			shortcut.add( "s",     function() { thrust[2] =  0; }, {'type':'keyup'} );
@@ -139,21 +142,34 @@ Animation.prototype.init_keys = function()
 	//shortcut.add( "m",     ( function(self) { return function() { self.m_axis.basis_selection--; console.log("Selected Basis: " + self.m_axis.basis_selection ); }; } ) (this) );	
 }
 
+function update_log(newLog){
+	log = newLog;
+}
 function update_camera( self, animation_delta_time ){
 
-	if(CAMERA_FOLLOW_ROBOT){
-		var eye = vec3();
-		var at = vec3();
-		var up = vec3();
+	var eye = vec3();
+	var at = vec3();
+	var up = vec3();
+	if(camera_mode == CAMERA_FOLLOW_ROBOT){
 		eye[0] = robot.pos[0];
 		eye[1] = 15;
 		eye[2] = 100;
 		up[0] = 0;
 		up[1] = 1;
 		up[2] = 0;
-		// lookAt( robot.pos, at, up );
 		self.graphicsState.camera_transform = lookAt(eye, robot.pos, up);
-	}else {
+	}else if(camera_mode == CAMERA_POURING_VIEW){
+		eye[0] = robot.pos[0] + 40;
+		eye[1] = 15;
+		eye[2] = 35;
+		up[0] = 0;
+		up[1] = 1;
+		up[2] = 0;
+		at[0] = robot.pos[0];
+		at[1] = robot.pos[1];
+		at[2] = robot.pos[2] - 15;
+		self.graphicsState.camera_transform = lookAt(eye, at, up);
+	} else {
 		var leeway = 70, border = 50;
 		var degrees_per_frame = .0002 * animation_delta_time;
 		var meters_per_frame  = .01 * animation_delta_time;
@@ -197,9 +213,9 @@ var purplePlastic = new Material( vec4( .9,1,.9,1 ), .2, .5, .8, 40 ), // Omit t
 	rusty	 	= new Material( vec4( .7,.25,.05,1 ), .5, .1,  1, 10),
 	soil 		= new Material( vec4( .7,.9,.5,1 ), .5, .1, .5, 10, "crackedSoil.png" ),
 	water 		= new Material( vec4( .0,.0,.3,0.9), 1, .5,  0.1, 10 ),
-	water 		= new Material( vec4( .0,.8,.8,0.9), 1, .5,  0.1, 10 ),
+	// water 		= new Material( vec4( .0,.8,.8,0.9), 1, .5,  0.1, 10 ),
 	
-	bucketPlastic 		= new Material( vec4( 1 ,0.7,0,1 ), .8, .5, .8, 40, "transOrange.png" ),
+	bucketPlastic 		= new Material( vec4( 1 ,0.7,0,1 ), .8, .5, .8, 40 ),
 	bucketPlasticInner 		= new Material( vec4( 1 ,0.7,0,1 ), .2, .5, .8, 40, "transOrange.png" );
 	// bucketPlastic 		= new Material( vec4( 1,1,0,0.2 ), .5, .1, .5, 10, "transOrange.png" );
 		
@@ -207,22 +223,26 @@ var purplePlastic = new Material( vec4( .9,1,.9,1 ), .2, .5, .8, 40 ), // Omit t
 function m_bucket_draw(parent, model_transform){
 	var stack = [];
 
+	var nSides = 15;
+	var angle = 12;
+
 	model_transform = mult(model_transform, translation(0,0.9,0));
 	
+	if(bucket.pouring){
+		model_transform = mult(model_transform, rotation(-135,0,0,1));
+		nSides = 30;
+	}
 	model_transform = mult(model_transform, scale(0.8,1,0.8));
 	stack.push(model_transform);
-	
+
 	// bottom0
-	model_transform = mult(model_transform, scale(3,0.2,3));
+	model_transform = mult(model_transform, scale(3.1,0.2,3.1));
 	parent.m_sphere.draw( parent.graphicsState, model_transform, bucketPlastic );
 
 
 	// sides
 	model_transform = stack.pop();
 	stack.push(model_transform);
-
-	var nSides = 15;
-	var angle = 12;
 	model_transform = mult(model_transform, rotation(180,0,1,0));
 	model_transform = mult(model_transform, translation(0,2.5,0));
 	stack.push(model_transform);
@@ -233,8 +253,6 @@ function m_bucket_draw(parent, model_transform){
 	for(var i = 0; i != nSides; i++){
 		model_transform = stack.pop();
 		model_transform = mult(model_transform, rotation(angle,0,1,0));
-		// stack.push(model_transform);
-
 
 
 		// rim
@@ -279,8 +297,6 @@ function m_bucket_draw(parent, model_transform){
 		parent.m_cube.draw( parent.graphicsState, model_transform, bucketPlasticInner );
 
 	}
-
-
 }
 function drawRobot(parent, model_transform){
 	var stack = [];
@@ -288,34 +304,50 @@ function drawRobot(parent, model_transform){
 
 	var body_transform = model_transform;
 
+	// if robot is pouring the bucket, stop receiving any direction input:
+	if (!bucket.pouring && (bucket.isCollectingWater) && robot.pos[0] >= 50){
+		robot.mode = MODE_POURING;
+		camera_mode = CAMERA_POURING_VIEW;
+		bucket.pouring = true;
+	}
 
 	// set direction
-	switch (mode){
+	switch (robot.mode){
 		case MODE_RIGHT:
+			update_log("RIGHT");
 			robot.pos[0] += 1;
 			body_transform = mult(body_transform, translation(robot.pos[0],robot.pos[1],robot.pos[2]));
 			body_transform = mult(body_transform, rotation(90,0,1,0));
 		break;
 		case MODE_LEFT:
+			update_log("LEFT");
 			robot.pos[0] -= 1;
 			body_transform = mult(body_transform, translation(robot.pos[0],robot.pos[1],robot.pos[2]));
 			body_transform = mult(body_transform, rotation(-90,0,1,0));
 
 		break;
 		case MODE_UP:
+			update_log("UP");
 			robot.pos[2] -= 1;
 			body_transform = mult(body_transform, translation(robot.pos[0],robot.pos[1],robot.pos[2]));
 			body_transform = mult(body_transform, rotation(180,0,1,0));
 
 		break;
 		case MODE_DOWN:
+			update_log("DOWN");
 			robot.pos[2] += 1;
 			body_transform = mult(body_transform, translation(robot.pos[0],robot.pos[1],robot.pos[2]));
 			body_transform = mult(body_transform, rotation(0,0,1,0));
 		break;
-		default:
+		case MODE_IDLE:
+			update_log("MOVE ROBOT (a s d w)");
 			body_transform = mult(body_transform, translation(0,0.5,0));
 			body_transform = mult(body_transform, translation(robot.pos[0],robot.pos[1],robot.pos[2]));
+		break;
+		case MODE_POURING:
+			update_log("IRRIGATION");
+			body_transform = mult(body_transform, translation(robot.pos[0],robot.pos[1],robot.pos[2]));
+			body_transform = mult(body_transform, rotation(90,0,1,0));
 		break;
 	}
 	stack.push(body_transform);
@@ -328,7 +360,7 @@ function drawRobot(parent, model_transform){
 	}
 
 	// legs
-	if (mode == MODE_IDLE){
+	if (robot.mode == MODE_IDLE ||robot.mode == MODE_POURING ){
 		for(var RL = -1; RL <= 1; RL +=2){ 
 			// stack.pop(); 
 			body_transform = stack.pop();
@@ -336,7 +368,10 @@ function drawRobot(parent, model_transform){
 			body_transform = mult(body_transform, translation(RL*2,+0.5,0));
 			for(var i = 0; i != 3; i++){
 				if(i)
-					body_transform = mult(body_transform, translation(0,1+0.5 + 0.2*Math.sin(parent.graphicsState.animation_time/100),0));
+					if ((robot.mode == MODE_POURING ))
+						body_transform = mult(body_transform, translation(0,1+0.5,0));
+					else
+						body_transform = mult(body_transform, translation(0,1+0.5 + 0.2*Math.sin(parent.graphicsState.animation_time/100),0));
 				stack.push(body_transform);
 				body_transform = mult(body_transform, scale(3,1,3));
 				parent.m_cube.draw( parent.graphicsState, body_transform, material );
@@ -383,11 +418,42 @@ function drawRobot(parent, model_transform){
 	stack.push(body_transform);
 	if (bucket.isCollectingWater){
 
+		////////////////////////////
 		// adjust bucket position
+		////////////////////////////
+
 		bucket.pos = vec3();
 		bucket.pos[0] = robot.pos[0];
-		bucket.pos[1] = robot.pos[1] + 8 + 0.5*Math.sin(parent.graphicsState.animation_time/100);
+		if (robot.mode == MODE_POURING ){
+			bucket.pos[1] = robot.pos[1] + 8;
+		}
+		else{
+			bucket.pos[1] = robot.pos[1] + 8 + 0.5*Math.sin(parent.graphicsState.animation_time/100);
+		}
+
 		bucket.pos[2] = robot.pos[2] + 10;
+		var bucketTranslateConst = 8;
+		switch (robot.mode){
+		case MODE_RIGHT:
+		case MODE_POURING:
+			bucket.pos[0] += bucketTranslateConst;
+			bucket.pos[2] -= bucketTranslateConst;
+
+		break;
+		case MODE_LEFT:
+			bucket.pos[0] -= bucketTranslateConst;
+			bucket.pos[2] -= bucketTranslateConst;
+		break;
+		case MODE_UP:
+			bucket.pos[2] -= bucketTranslateConst+10;
+		break;
+		case MODE_DOWN:
+		case MODE_IDLE:
+		default:
+		break;
+		}
+
+		/////////////////////////////////
 
 		for (var RL = -1; RL <= 1; RL+=2) {
 			stack.push(body_transform);
@@ -406,7 +472,7 @@ function drawRobot(parent, model_transform){
 		}
 
 	}
-	else if (mode == MODE_IDLE){
+	else if (robot.mode == MODE_IDLE){
 		for (var RL = -1; RL <= 1; RL+=2) {
 			stack.push(body_transform);
 			body_transform = mult(body_transform, translation(RL * (5+2),2,0));
@@ -441,8 +507,7 @@ function drawRobot(parent, model_transform){
 	body_transform = stack.pop();
 	body_transform = mult(body_transform, translation(0,4+3,0));
 	body_transform = mult(body_transform, scale(6,4,4));
-	parent.m_cube.draw( parent.graphicsState, body_transform, material );
-	
+	parent.m_cube.draw( parent.graphicsState, body_transform, material );	
 }
 
 // RAIN
@@ -454,6 +519,11 @@ var Rain = [];
 
 function RainDrop (){
 	this.pos = vec3();
+	// this.sc = vec3();
+	// this.sc = 2*Math.random();
+	// this.sc[0] = 2*Math.random();
+	// this.sc[1] = 2*Math.random();
+	// this.sc[2] = 2*Math.random();
 	this.falling = false;
 }
 function initRain(){
@@ -494,15 +564,13 @@ function drawRain(parent,animate){
 					} else {
 						Rain[i].pos[1] -= 1;
 						var rain_transform = mult(mat4(), translation(Rain[i].pos[0], Rain[i].pos[1], Rain[i].pos[2]));
+						// rain_transform = mult(rain_transform, scale(Rain[i].sc, Rain[i].sc, Rain[i].sc));
 						m_rain_draw(parent, rain_transform);
 					}
 
 			} else {
 				// randomly decide if the we wanna drop a rain
 				if(Math.random() > 0.99){
-					// decide x pos
-					// Rain[i].pos[0] = bucket.pos[0]+3;
-					// Rain[i].pos[2] = bucket.pos[2];
 					Rain[i].pos[0] = rainRangeStart[0] + Math.floor((Math.random() * (rainRangeDis[0]) + 1));
 					Rain[i].pos[2] = rainRangeStart[2] + Math.floor((Math.random() * (rainRangeDis[2]) + 1));
 					Rain[i].pos[1] = rainRangeStart[1];
@@ -519,7 +587,6 @@ function drawRain(parent,animate){
 				m_rain_draw(parent, rain_transform);
 			}
 		}
-		
 	}
 }
 // display(): called once per frame, whenever OpenGL decides it's time to redraw.
@@ -558,10 +625,11 @@ Animation.prototype.display = function(time)
 		this.m_cube.draw( this.graphicsState, model_transform, purplePlastic );
 
 		// rain drops
-		model_transform = mtStack.pop();
-		mtStack.push(model_transform);
-		drawRain(this,animate);
-
+		// if (!bucket.pouring){
+			model_transform = mtStack.pop();
+			mtStack.push(model_transform);
+			drawRain(this,animate);
+		// }
 		// robot
 		model_transform = mtStack.pop();
 		mtStack.push(model_transform);
@@ -570,7 +638,7 @@ Animation.prototype.display = function(time)
 		// bucket
 		model_transform = mtStack.pop();
 		mtStack.push(model_transform);
-
+// 
 		model_transform = mult(model_transform, translation(bucket.pos[0], bucket.pos[1], bucket.pos[2]));
 		m_bucket_draw(this, model_transform);
 
@@ -604,12 +672,13 @@ Animation.prototype.display = function(time)
 
 Animation.prototype.update_strings = function( debug_screen_strings )		// Strings this particular class contributes to the UI
 {
+	// debug_screen_strings.string_map["Bucket"] = "Bucket: (" + bucket.pos[0] + ", " + bucket.pos[1] + ", " + bucket.pos[2] + ")";
+	debug_screen_strings.string_map["Robot"] = "Robot: (" + robot.pos[0] + ", " + robot.pos[1] + ", " + robot.pos[2] + ")";
 	debug_screen_strings.string_map["time"] = "Animation Time: " + this.graphicsState.animation_time/1000 + "s";
 	// debug_screen_strings.string_map["basis"] = "Showing basis: " + this.m_axis.basis_selection;
 	debug_screen_strings.string_map["animate"] = "Animation " + (animate ? "on" : "off") ;
 	// debug_screen_strings.string_map["thrust"] = "Thrust: " + thrust;
-	debug_screen_strings.string_map["Robot"] = "Robot: (" + robot.pos[0] + ", " + robot.pos[1] + ", " + robot.pos[2] + ")";
 
-	debug_screen_strings.string_map["Bucket"] = "Bucket: (" + bucket.pos[0] + ", " + bucket.pos[1] + ", " + bucket.pos[2] + ")";
+	debug_screen_strings.string_map["message"] = log;
 
 }
