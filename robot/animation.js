@@ -27,6 +27,7 @@ var camera_mode;
 var CAMERA_FOLLOW_ROBOT = 0;
 var CAMERA_POURING_VIEW = 1;
 var CAMERA_GROWING_GREEN = 2;
+var CAMERA_WHOLE_VIEW = 3;
 
 // MODE
 var MODE_UP = 0;
@@ -169,7 +170,18 @@ function update_camera( self, animation_delta_time ){
 		at[1] = robot.pos[1];
 		at[2] = robot.pos[2] - 15;
 		self.graphicsState.camera_transform = lookAt(eye, at, up);
-	} else {
+	} else if (camera_mode == CAMERA_WHOLE_VIEW){
+		eye[0] = 0;
+		eye[1] = 10;
+		eye[2] = 100;
+		up[0] = 0;
+		up[1] = 1;
+		up[2] = 0;
+		at[0] = 0;
+		at[1] = 0;
+		at[2] = -10;
+		self.graphicsState.camera_transform = lookAt(eye, at, up);
+	}else {
 		var leeway = 70, border = 50;
 		var degrees_per_frame = .0002 * animation_delta_time;
 		var meters_per_frame  = .01 * animation_delta_time;
@@ -305,10 +317,9 @@ function drawRobot(parent, model_transform){
 	var body_transform = model_transform;
 
 	// if robot is pouring the bucket, stop receiving any direction input:
-	if (!bucket.pouring && (bucket.isCollectingWater) && robot.pos[0] >= 50){
+	if ((bucket.isCollectingWater) && robot.pos[0] >= 50 && camera_mode != CAMERA_WHOLE_VIEW){
 		robot.mode = MODE_POURING;
 		camera_mode = CAMERA_POURING_VIEW;
-		bucket.pouring = true;
 	}
 
 	// set direction
@@ -508,10 +519,16 @@ function drawRobot(parent, model_transform){
 	body_transform = mult(body_transform, translation(0,4+3,0));
 	body_transform = mult(body_transform, scale(6,4,4));
 	parent.m_cube.draw( parent.graphicsState, body_transform, material );	
+
+
+	if(!bucket.pouring && camera_mode == CAMERA_POURING_VIEW){
+		resetRainDrop();
+		bucket.pouring = true;
+	}
 }
 
 // RAIN
-
+var pouringRainId = 0;
 var rainRangeStart = [-100, 80,-50] ;
 var rainRangeDis = [100,80,100];
 var rainAmount = 100;
@@ -531,7 +548,18 @@ function initRain(){
 		Rain.push(new RainDrop());
 	}
 }
-
+function resetRainDrop(){
+	for (var i = 0; i != rainAmount; i++){
+		Rain[i].pos = vec3();
+		Rain[i].falling = false;
+	}
+	// we make three drop fall from the bucket to the ground.
+	for (var i = 0; i != 3; i++){
+		Rain[i].pos = bucket.pos.slice(); 
+		Rain[i].pos[0] += 3;
+		Rain[i].falling = true;
+	}
+}
 function m_rain_draw(parent, model_transform){
 	var stack = [];
 	model_transform = mult(model_transform, scale(0.5,0.5,0.5));
@@ -548,9 +576,29 @@ function m_rain_draw(parent, model_transform){
 }
 
 function drawRain(parent,animate){
-	for ( var i = 0; i != rainAmount; i++){
-		if ( animate ){
-			if ( Rain[i].falling){
+	if(camera_mode == CAMERA_POURING_VIEW){
+		if (pouringRainId < 3){
+			var model = mult(mat4(),translation(Rain[pouringRainId].pos[0], Rain[pouringRainId].pos[1], Rain[pouringRainId].pos[2]));
+			m_rain_draw(parent, model);
+			Rain[pouringRainId].pos[1] -= 0.2;
+			if(Rain[pouringRainId].pos[1] <= -pouringRainId){
+				// update_log("Rainid = "+pouringRainId);
+				Rain[pouringRainId].falling = false;
+				pouringRainId++;
+			}
+		} else {
+
+			// trigger plants to grow
+			camera_mode = CAMERA_WHOLE_VIEW;
+			rainRangeDis[0] = 200;
+			robot.mode = MODE_IDLE;
+			robot.pos = [25,0,0];
+		}
+
+	} else {
+		for ( var i = 0; i != rainAmount; i++){
+			if ( animate ){
+				if ( Rain[i].falling){
 					// bucket collision detection
 					if (length(subtract(Rain[i].pos, bucket.pos)) < bucket.collisionRadius){
 						if (bucket.isCollectingWater){
@@ -568,23 +616,24 @@ function drawRain(parent,animate){
 						m_rain_draw(parent, rain_transform);
 					}
 
-			} else {
-				// randomly decide if the we wanna drop a rain
-				if(Math.random() > 0.99){
-					Rain[i].pos[0] = rainRangeStart[0] + Math.floor((Math.random() * (rainRangeDis[0]) + 1));
-					Rain[i].pos[2] = rainRangeStart[2] + Math.floor((Math.random() * (rainRangeDis[2]) + 1));
-					Rain[i].pos[1] = rainRangeStart[1];
-					Rain[i].falling = true;
-					var rain_transform = mult(mat4(), translation(Rain[i].pos[0], Rain[i].pos[1], Rain[i].pos[2]));
-					rain_transform = mult(rain_transform, scale(1,1,1));
-					parent.m_cube.draw( parent.graphicsState, rain_transform, bluePlastic );
+				} else {
+					// randomly decide if the we wanna drop a rain
+					if(Math.random() > 0.99){
+						Rain[i].pos[0] = rainRangeStart[0] + Math.floor((Math.random() * (rainRangeDis[0]) + 1));
+						Rain[i].pos[2] = rainRangeStart[2] + Math.floor((Math.random() * (rainRangeDis[2]) + 1));
+						Rain[i].pos[1] = rainRangeStart[1];
+						Rain[i].falling = true;
+						var rain_transform = mult(mat4(), translation(Rain[i].pos[0], Rain[i].pos[1], Rain[i].pos[2]));
+						rain_transform = mult(rain_transform, scale(1,1,1));
+						parent.m_cube.draw( parent.graphicsState, rain_transform, bluePlastic );
+					}
+					
 				}
-				
-			}
-		} else {
-			if ( Rain[i].falling){
-				var rain_transform = mult(mat4(), translation(Rain[i].pos[0], Rain[i].pos[1], Rain[i].pos[2]));
-				m_rain_draw(parent, rain_transform);
+			} else {
+				if ( Rain[i].falling){
+					var rain_transform = mult(mat4(), translation(Rain[i].pos[0], Rain[i].pos[1], Rain[i].pos[2]));
+					m_rain_draw(parent, rain_transform);
+				}
 			}
 		}
 	}
@@ -620,6 +669,9 @@ Animation.prototype.display = function(time)
 		// wall
 		model_transform = mtStack.pop();
 		mtStack.push(model_transform);
+		if(camera_mode == CAMERA_WHOLE_VIEW){
+			model_transform = mult(model_transform, rotation(10,0,0,1));
+		}
 		model_transform = mult(model_transform, translation(0,+50,-50));
 		model_transform = mult(model_transform, scale(5,100,100));
 		this.m_cube.draw( this.graphicsState, model_transform, purplePlastic );
@@ -636,18 +688,19 @@ Animation.prototype.display = function(time)
 		drawRobot(this, model_transform);
 
 		// bucket
-		model_transform = mtStack.pop();
-		mtStack.push(model_transform);
-// 
-		model_transform = mult(model_transform, translation(bucket.pos[0], bucket.pos[1], bucket.pos[2]));
-		m_bucket_draw(this, model_transform);
+		if (camera_mode != CAMERA_WHOLE_VIEW){
+			model_transform = mtStack.pop();
+			mtStack.push(model_transform);
+			model_transform = mult(model_transform, translation(bucket.pos[0], bucket.pos[1], bucket.pos[2]));
+			m_bucket_draw(this, model_transform);
 
-		model_transform = mtStack.pop();
+			model_transform = mtStack.pop();
 
-		// check collision of robot and bucket
-		if (!bucket.isCollectingWater){
-			if(length(subtract(robot.pos, bucket.pos)) < bucket.collisionRadius+5){
-				bucket.isCollectingWater = true;
+			// check collision of robot and bucket
+			if (!bucket.isCollectingWater){
+				if(length(subtract(robot.pos, bucket.pos)) < bucket.collisionRadius+5){
+					bucket.isCollectingWater = true;
+				}
 			}
 		}
 /*
