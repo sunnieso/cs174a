@@ -15,7 +15,7 @@ function CURRENT_BASIS_IS_WORTH_SHOWING(self, model_transform) { self.m_axis.dra
 // *******************************************************
 // IMPORTANT -- In the line below, add the filenames of any new images you want to include for textures!
 
-var texture_filenames_to_load = ["transOrange.png" , "stars.png", "text.png", "earth.gif", "crackedSoil.png", "copy.png" ];
+var texture_filenames_to_load = ["transOrange.png" , "stars.png", "text.png", "earth.gif", "crackedSoil.jpg", "copy.png" ];
 
 // message that appear on the screen
 var log = "";
@@ -23,6 +23,7 @@ var log = "";
 var robot;
 var bucket;
 var camera_mode;
+
 // camera mode
 var CAMERA_FOLLOW_ROBOT = 0;
 var CAMERA_POURING_VIEW = 1;
@@ -66,7 +67,45 @@ function Bucket(){
 	this.pouring = false;
 }
 
+var GRASS_FULL_LENGTH = 10; 
+var LAWN_SIZE = [200,20];
+var grassAmount = 0;
+var lawn = [];
+function Grass(x,z){
+	//         [x,z]
+	this.pos = [x,z];
+	this.visibility = false;
+	this.length = 0;
+	this.growFlower = false;
+}
+function initGrass(){
+	var offset = 1;
+	for( var i = -150; i <= LAWN_SIZE[0]; i+=50){
+		offset *= -1;
+		for( var j = 0; j <= LAWN_SIZE[1]; j+=5){
+			lawn.push(new Grass(i + offset*100*Math.random(),j-50));
+			grassAmount++;
+		}
+	}
+}
+function drawGrass(parent, animate){
+	for (var i = 0; i != grassAmount; i++){	
+		var model_transform = mat4();
+		var stack = [];
+		model_transform = mult(model_transform, translation(lawn[i].pos[0], 0,lawn[i].pos[1]));
+		stack.push(model_transform);
+		for( var len = 0; len != lawn[i].length; len++){
+			model_transform = stack.pop();
+			model_transform = mult(model_transform, translation(0,0.5,0));
+			stack.push(model_transform);
+			model_transform = mult (model_transform, scale(0.5,0.5,0.5));
+			parent.m_cube.draw( parent.graphicsState, model_transform, greyPlastic );
+		}
+		if(lawn[i].length < GRASS_FULL_LENGTH)
+			lawn[i].length++;
+	}
 
+}
 // *******************************************************	
 // When the web page's window loads it creates an "Animation" object.  It registers itself as a displayable object to our other class "GL_Context" -- which OpenGL is told to call upon every time a
 // draw / keyboard / mouse event happens.
@@ -96,6 +135,7 @@ function Animation()
 		camera_mode = CAMERA_FOLLOW_ROBOT;
 		bucket = new Bucket();
 		initRain();
+		initGrass();
 		// 1st parameter is camera matrix.  2nd parameter is the projection:  The matrix that determines how depth is treated.  It projects 3D points onto a plane.
 		self.graphicsState = new GraphicsState( translation(0, -10,-100), perspective(50, canvas.width/canvas.height, .1, 200), 0 );
 
@@ -223,12 +263,12 @@ var purplePlastic = new Material( vec4( .9,1,.9,1 ), .2, .5, .8, 40 ), // Omit t
 	earth 		= new Material( vec4( .7,.9,.5,1 ), .5, .1, .5, 10, "earth.gif" ),
 	stars	 	= new Material( vec4( .5,.5,.5,1 ), .5,  1,  1, 40, "stars.png" ),
 	rusty	 	= new Material( vec4( .7,.25,.05,1 ), .5, .1,  1, 10),
-	soil 		= new Material( vec4( .7,.9,.5,1 ), .5, .1, .5, 10, "crackedSoil.png" ),
+	soil 		= new Material( vec4( .7,.9,.5,1 ), .5, .1, .5, 10, "crackedSoil.jpg" ),
 	water 		= new Material( vec4( .0,.0,.3,0.9), 1, .5,  0.1, 10 ),
 	// water 		= new Material( vec4( .0,.8,.8,0.9), 1, .5,  0.1, 10 ),
 	
 	bucketPlastic 		= new Material( vec4( 1 ,0.7,0,1 ), .8, .5, .8, 40 ),
-	bucketPlasticInner 		= new Material( vec4( 1 ,0.7,0,1 ), .2, .5, .8, 40, "transOrange.png" );
+	bucketPlasticInner 		= new Material( vec4( 1 ,0.7,0,1 ), .2, .5, .8, 40, "copy.png" );
 	// bucketPlastic 		= new Material( vec4( 1,1,0,0.2 ), .5, .1, .5, 10, "transOrange.png" );
 		
 
@@ -536,11 +576,6 @@ var Rain = [];
 
 function RainDrop (){
 	this.pos = vec3();
-	// this.sc = vec3();
-	// this.sc = 2*Math.random();
-	// this.sc[0] = 2*Math.random();
-	// this.sc[1] = 2*Math.random();
-	// this.sc[2] = 2*Math.random();
 	this.falling = false;
 }
 function initRain(){
@@ -587,7 +622,6 @@ function drawRain(parent,animate){
 				pouringRainId++;
 			}
 		} else {
-
 			// trigger plants to grow
 			camera_mode = CAMERA_WHOLE_VIEW;
 			rainRangeDis[0] = 200;
@@ -703,25 +737,12 @@ Animation.prototype.display = function(time)
 				}
 			}
 		}
-/*
-		CURRENT_BASIS_IS_WORTH_SHOWING(this, model_transform); 
-		model_transform = mult( model_transform, translation( 0, -2, 0 ) );		
-
-		
-		model_transform = mult( model_transform, translation( 0, -4, 0 ) );
-		this.m_cylinder.draw( this.graphicsState, model_transform, greyPlastic );	
-		model_transform = mult( model_transform, rotation( this.graphicsState.animation_time/20, 0, 1, 0 ) );	
-		model_transform = mult( model_transform, scale( 10, 1, 5 ) );											
-		this.m_sphere.draw( this.graphicsState, model_transform, earth );		
-		this.m_strip.draw( this.graphicsState, model_transform, stars );
-		this.m_sphere.draw( this.graphicsState, model_transform, bluePlastic );	
-		this.m_fan.draw( this.graphicsState, model_transform, greyPlastic );	
-		this.m_cube.draw( this.graphicsState, model_transform, powerpuff );
-*/	
 
 
-	
-	}	
+		// if(camera_mode == CAMERA_WHOLE_VIEW){
+			drawGrass(this, animate);
+		// }
+}	
 
 Animation.prototype.update_strings = function( debug_screen_strings )		// Strings this particular class contributes to the UI
 {
