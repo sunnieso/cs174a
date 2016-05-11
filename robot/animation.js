@@ -89,17 +89,20 @@ function initGrass(){
 	}
 }
 function drawGrass(parent, animate){
+	var swayDir = 1;
 	for (var i = 0; i != grassAmount; i++){	
+		swayDir *= -1;
 		var model_transform = mat4();
 		var stack = [];
 		model_transform = mult(model_transform, translation(lawn[i].pos[0], 0,lawn[i].pos[1]));
 		stack.push(model_transform);
 		for( var len = 0; len != lawn[i].length; len++){
 			model_transform = stack.pop();
+			model_transform = mult(model_transform, rotation(Math.cos(parent.graphicsState.animation_time/200)*5*swayDir, 0,0,1));
 			model_transform = mult(model_transform, translation(0,0.5,0));
 			stack.push(model_transform);
 			model_transform = mult (model_transform, scale(0.5,0.5,0.5));
-			parent.m_cube.draw( parent.graphicsState, model_transform, greyPlastic );
+			parent.m_cube.draw( parent.graphicsState, model_transform, greenGrass );
 		}
 		if(lawn[i].length < GRASS_FULL_LENGTH)
 			lawn[i].length++;
@@ -266,6 +269,7 @@ var purplePlastic = new Material( vec4( .9,1,.9,1 ), .2, .5, .8, 40 ), // Omit t
 	soil 		= new Material( vec4( .7,.9,.5,1 ), .5, .1, .5, 10, "crackedSoil.jpg" ),
 	water 		= new Material( vec4( .0,.0,.3,0.9), 1, .5,  0.1, 10 ),
 	// water 		= new Material( vec4( .0,.8,.8,0.9), 1, .5,  0.1, 10 ),
+	greenGrass 	= new Material( vec4( 0,0.8,0.5,1), 0.5, .5,  0.1, 30 ),
 	
 	bucketPlastic 		= new Material( vec4( 1 ,0.7,0,1 ), .8, .5, .8, 40 ),
 	bucketPlasticInner 		= new Material( vec4( 1 ,0.7,0,1 ), .2, .5, .8, 40, "copy.png" );
@@ -739,9 +743,9 @@ Animation.prototype.display = function(time)
 		}
 
 
-		// if(camera_mode == CAMERA_WHOLE_VIEW){
+		if(camera_mode == CAMERA_WHOLE_VIEW){
 			drawGrass(this, animate);
-		// }
+		}
 }	
 
 Animation.prototype.update_strings = function( debug_screen_strings )		// Strings this particular class contributes to the UI
