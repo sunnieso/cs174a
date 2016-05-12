@@ -95,7 +95,10 @@ function shape()
 		};
 	
 	shape.prototype.spherical_texture_coords = function( vert_index )
-		{	this.texture_coords.push( vec2( .5 + Math.atan2( this.vertices[vert_index][2], this.vertices[vert_index][0] ) / 2 / Math.PI, .5 - 2 * Math.asin( this.vertices[vert_index][1] ) / 2 / Math.PI ) );
+		{	
+			// this.texture_coords.push( vec2(1,5 ) );
+			this.texture_coords.push( vec2( .5 + Math.atan2( this.vertices[vert_index][2], this.vertices[vert_index][0] ) / 2 / Math.PI, .5 - 2 * Math.asin( this.vertices[vert_index][1] ) / 2 / Math.PI ) );
+		
 		}
 	
 	shape.prototype.init_buffers = function()			// Send the completed vertex and index lists to their own buffers in the graphics card.
@@ -135,8 +138,8 @@ function shape()
                 lightPositions_flattened = [], lightColors_flattened = [];
                 lightPositions.push( vec4( -100 , 20, 100, 1 ) ); 
 				// lightPositions.push( vec4( 10 * Math.sin(graphicsState.animation_time/1000), 2, -2, 1 ) );    
-				lightColors.push( vec4( 1, 1, 0, 1 ) );   
-				attenuations.push( .0001 );
+				lightColors.push( vec4( 0, 1, 1, 1 ) );   
+				attenuations.push( .00001 );
 
      			lightPositions.push( vec4( 100 , 20, 100, 1 ) ); 
 				// lightPositions.push( vec4( 10 * Math.sin(graphicsState.animation_time/1000), 2, -2, 1 ) );    

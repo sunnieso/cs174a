@@ -15,7 +15,7 @@ function CURRENT_BASIS_IS_WORTH_SHOWING(self, model_transform) { self.m_axis.dra
 // *******************************************************
 // IMPORTANT -- In the line below, add the filenames of any new images you want to include for textures!
 
-var texture_filenames_to_load = ["transOrange.png" , "stars.png", "text.png", "earth.gif", "crackedSoil.jpg", "copy.png" ];
+var texture_filenames_to_load = ["transOrange.png" , "text.png", "brick.jpg", "crackedSoil.jpg", "copy.png", "desert.jpg", "waterfall.jpg" ];
 
 // message that appear on the screen
 var log = "";
@@ -44,6 +44,7 @@ function Robot(){
 	this.pos[1] = 0;
 	this.pos[2] = 0;
 	this.mode = MODE_IDLE;
+	this.hailing = false;
 }
 
 function Bucket(){
@@ -55,7 +56,7 @@ function Bucket(){
 	this.pos = vec3();
 	this.pos[0] = -10;
 	this.pos[1] = 0;
-	this.pos[2] = 40;
+	this.pos[2] = 0;
 
 	// water
 	this.isCollectingWater = false;
@@ -121,7 +122,7 @@ function Animation()
 		self.context = new GL_Context( "gl-canvas" );
 		self.context.register_display_object( self );
 		
-		gl.clearColor( 0, 1, 0, 1 );			// Background color
+		gl.clearColor( 0, 0, 0, 1 );			// Background color
 		
 		for( var i = 0; i < texture_filenames_to_load.length; i++ )
 			initTexture( texture_filenames_to_load[i], true );
@@ -133,7 +134,8 @@ function Animation()
 		self.m_fan = new triangle_fan_full( 10, mat4() );
 		self.m_strip = new rectangular_strip( 1, mat4() );
 		self.m_cylinder = new cylindrical_strip( 10, mat4() );
-		
+		self.m_cube_floor = new cube_floor();
+		self.m_windmill = new windmill(10);
 		robot = new Robot();
 		camera_mode = CAMERA_FOLLOW_ROBOT;
 		bucket = new Bucket();
@@ -191,38 +193,47 @@ function update_log(newLog){
 }
 function update_camera( self, animation_delta_time ){
 
+		// var eye = vec3(this.graphicsState.animation_time-100,10,90);
+		// var up = vec3(0,1,0);
+		// var at = vec3(0,0,-10);
+		// this.graphicsState.camera_transform = lookAt(eye, at, up);
 	var eye = vec3();
 	var at = vec3();
 	var up = vec3();
 	if(camera_mode == CAMERA_FOLLOW_ROBOT){
-		eye[0] = robot.pos[0];
-		eye[1] = 15;
-		eye[2] = 100;
-		up[0] = 0;
-		up[1] = 1;
-		up[2] = 0;
+		eye = vec3(robot.pos[0], 15, 100);
+		up  = vec3(0,1,0);
 		self.graphicsState.camera_transform = lookAt(eye, robot.pos, up);
 	}else if(camera_mode == CAMERA_POURING_VIEW){
-		eye[0] = robot.pos[0] + 40;
-		eye[1] = 15;
-		eye[2] = 35;
-		up[0] = 0;
-		up[1] = 1;
-		up[2] = 0;
-		at[0] = robot.pos[0];
-		at[1] = robot.pos[1];
-		at[2] = robot.pos[2] - 15;
+
+		eye = vec3(robot.pos[0] + 40, 15, 35);
+		up  = vec3(0,1,0);
+		at  = vec3(robot.pos[0], robot.pos[1], robot.pos[2] - 15);
+		// eye[0] = robot.pos[0] + 40;
+		// eye[1] = 15;
+		// eye[2] = 35;
+		// up[0] = 0;
+		// up[1] = 1;
+		// up[2] = 0;
+		// at[0] = robot.pos[0];
+		// at[1] = robot.pos[1];
+		// at[2] = robot.pos[2] - 15;
 		self.graphicsState.camera_transform = lookAt(eye, at, up);
 	} else if (camera_mode == CAMERA_WHOLE_VIEW){
-		eye[0] = 0;
-		eye[1] = 10;
-		eye[2] = 100;
-		up[0] = 0;
-		up[1] = 1;
-		up[2] = 0;
-		at[0] = 0;
-		at[1] = 0;
-		at[2] = -10;
+
+		eye = vec3(0, 10, 90);
+		up  = vec3(0,1,0);
+		at  = vec3(0, 0, -10);
+
+		// eye[0] = 0;
+		// eye[1] = 10;
+		// eye[2] = 90;
+		// up[0] = 0;
+		// up[1] = 1;
+		// up[2] = 0;
+		// at[0] = 0;
+		// at[1] = 0;
+		// at[2] = -10;
 		self.graphicsState.camera_transform = lookAt(eye, at, up);
 	}else {
 		var leeway = 70, border = 50;
@@ -263,14 +274,14 @@ function update_camera( self, animation_delta_time ){
 var purplePlastic = new Material( vec4( .9,1,.9,1 ), .2, .5, .8, 40 ), // Omit the final (string) parameter if you want no texture
 	greyPlastic = new Material( vec4( .5,.5,.5,1 ), .2, .8, .5, 20 ),
 	bluePlastic = new Material( vec4( .0,.0,.9,1 ), .2, .4, .3, 30 ),
-	earth 		= new Material( vec4( .7,.9,.5,1 ), .5, .1, .5, 10, "earth.gif" ),
-	stars	 	= new Material( vec4( .5,.5,.5,1 ), .5,  1,  1, 40, "stars.png" ),
 	rusty	 	= new Material( vec4( .7,.25,.05,1 ), .5, .1,  1, 10),
 	soil 		= new Material( vec4( .7,.9,.5,1 ), .5, .1, .5, 10, "crackedSoil.jpg" ),
 	water 		= new Material( vec4( .0,.0,.3,0.9), 1, .5,  0.1, 10 ),
 	// water 		= new Material( vec4( .0,.8,.8,0.9), 1, .5,  0.1, 10 ),
-	greenGrass 	= new Material( vec4( 0,0.8,0.5,1), 0.5, .5,  0.1, 30 ),
-	
+	greenGrass 	= new Material( vec4( 0,0.8,0.5,1), 1, .5,  0.1, 30 ),
+	desert 		= new Material( vec4( 0,0,0,1 ),  1, 0.0001,   1, 10000, "desert.jpg"),
+	waterfall 	= new Material( vec4( 0,0,0,1 ),  1, 0.0001,   1, 10000, "waterfall.jpg"),
+	brick	 	= new Material( vec4( 0,0,0,1 ),  1, 0.0001,   1, 10000, "brick.jpg"),
 	bucketPlastic 		= new Material( vec4( 1 ,0.7,0,1 ), .8, .5, .8, 40 ),
 	bucketPlasticInner 		= new Material( vec4( 1 ,0.7,0,1 ), .2, .5, .8, 40, "copy.png" );
 	// bucketPlastic 		= new Material( vec4( 1,1,0,0.2 ), .5, .1, .5, 10, "transOrange.png" );
@@ -530,6 +541,9 @@ function drawRobot(parent, model_transform){
 	else if (robot.mode == MODE_IDLE){
 		for (var RL = -1; RL <= 1; RL+=2) {
 			stack.push(body_transform);
+			if(robot.hailing){
+				body_transform = mult(body_transform, rotation(100*Math.sin(parent.graphicsState.animation_time/500)-90,1,0,0));
+			}
 			body_transform = mult(body_transform, translation(RL * (5+2),2,0));
 			for (var i = 0; i != 4; i++) {
 				body_transform = mult(body_transform, translation(0,-1.5,0));
@@ -630,6 +644,8 @@ function drawRain(parent,animate){
 			camera_mode = CAMERA_WHOLE_VIEW;
 			rainRangeDis[0] = 200;
 			robot.mode = MODE_IDLE;
+			robot.hailing = true;
+			bucket.isCollectingWater = false;
 			robot.pos = [25,0,0];
 		}
 
@@ -678,6 +694,12 @@ function drawRain(parent,animate){
 }
 // display(): called once per frame, whenever OpenGL decides it's time to redraw.
 
+var fallTime = 0;
+var EndTime = 90;
+var EndFlashTime = 150;
+var flashClk = 0;
+var cntFlashClk = 0;
+
 Animation.prototype.display = function(time)
 	{
 		if(!time) time = 0;
@@ -686,9 +708,9 @@ Animation.prototype.display = function(time)
 		prev_time = time;
 		
 		update_camera( this, this.animation_delta_time );
-		
+		// this.graphicsState.camera_transform = lookAt(vec3(this.graphicsState.animation_time-100,0,0)
 
-
+		update_clk();
 
 		this.basis_id = 0;
 		var mtStack = [];
@@ -697,35 +719,89 @@ Animation.prototype.display = function(time)
 		/**********************************
 		Start coding here!!!!
 		**********************************/
+		model_transform = mtStack.pop();
+		mtStack.push(model_transform);
+		model_transform = mult(model_transform, translation(50,0,-50));
+		model_transform = mult(model_transform, scale(10,10,10));
+		this.m_windmill.draw( this.graphicsState, model_transform, greenGrass );
+
+		// Wall and desert background
+		model_transform = mtStack.pop();
+		mtStack.push(model_transform);
+		if(camera_mode == CAMERA_WHOLE_VIEW){	
+			if( fallTime <= EndTime){
+				model_transform = mult(model_transform, rotation(fallTime, 0,0,-1)); 
+				fallTime+=1;
+				model_transform = mult(model_transform, translation(0,+50,-50));
+				model_transform = mult(model_transform, scale(5,100,100));
+				this.m_cube.draw( this.graphicsState, model_transform, brick );
+			} else if ( fallTime <= EndFlashTime){
+
+				model_transform = mult(model_transform, rotation(90, 0,0,-1)); 
+				fallTime+=1;
+				if(flashClk){
+					model_transform = mult(model_transform, translation(0,+50,-50));
+					model_transform = mult(model_transform, scale(5,100,100));
+					this.m_cube.draw( this.graphicsState, model_transform, brick );
+				}
+			}
+		} else {
+			model_transform = mult(model_transform, translation(0,+50,-50));
+			model_transform = mult(model_transform, scale(5,100,100));
+			this.m_cube.draw( this.graphicsState, model_transform, brick );
+		}
+		
+		// background
+		model_transform = mtStack.pop();
+		mtStack.push(model_transform);
+
+		if(camera_mode == CAMERA_WHOLE_VIEW){			
+			if( fallTime <= EndTime){
+				model_transform = mult(model_transform, rotation(fallTime, 0,0,-1));
+
+				model_transform = mult(model_transform, translation(200,10,-80));
+				model_transform = mult(model_transform, scale(400,300,1));
+				this.m_cube.draw( this.graphicsState, model_transform, desert );
+			}
+		} else {
+			model_transform = mult(model_transform, translation(200,10,-80));
+			model_transform = mult(model_transform, scale(400,300,1));
+			this.m_cube.draw( this.graphicsState, model_transform, desert );
+		}
+
+		model_transform = mtStack.pop();
+		mtStack.push(model_transform);
+		model_transform = mult(model_transform, translation(-25,40,-100));
+		model_transform = mult(model_transform, scale(500,80,1));
+		this.m_cube.draw( this.graphicsState, model_transform, waterfall );
 
 		// plane
+
 		model_transform = mtStack.pop();
 		mtStack.push(model_transform);
-		model_transform = mult(model_transform, scale(1000,1,1000));
+
+		model_transform = mult(model_transform, translation(250,0,0));
+		model_transform = mult(model_transform, scale(500,1,1000));
+		this.m_cube_floor.draw( this.graphicsState, model_transform, soil );
+
+
+		model_transform = mtStack.pop();
+		mtStack.push(model_transform);
+		model_transform = mult(model_transform, translation(-250,0,0));
+		model_transform = mult(model_transform, scale(500,1,1000));
 		this.m_cube.draw( this.graphicsState, model_transform, soil );
 
-		// wall
+		// Rain
 		model_transform = mtStack.pop();
 		mtStack.push(model_transform);
-		if(camera_mode == CAMERA_WHOLE_VIEW){
-			model_transform = mult(model_transform, rotation(10,0,0,1));
-		}
-		model_transform = mult(model_transform, translation(0,+50,-50));
-		model_transform = mult(model_transform, scale(5,100,100));
-		this.m_cube.draw( this.graphicsState, model_transform, purplePlastic );
+		drawRain(this,animate);
 
-		// rain drops
-		// if (!bucket.pouring){
-			model_transform = mtStack.pop();
-			mtStack.push(model_transform);
-			drawRain(this,animate);
-		// }
-		// robot
+		// Robot
 		model_transform = mtStack.pop();
 		mtStack.push(model_transform);
 		drawRobot(this, model_transform);
 
-		// bucket
+		// Bucket
 		if (camera_mode != CAMERA_WHOLE_VIEW){
 			model_transform = mtStack.pop();
 			mtStack.push(model_transform);
@@ -747,6 +823,17 @@ Animation.prototype.display = function(time)
 			drawGrass(this, animate);
 		}
 }	
+
+function update_clk(){
+// 	var flashClk = 0;
+// 	var cntFlashClk = 0;
+	if(cntFlashClk == 8){
+		cntFlashClk = 0;
+		flashClk = ~flashClk;
+	} else {
+		cntFlashClk++;
+	}
+}
 
 Animation.prototype.update_strings = function( debug_screen_strings )		// Strings this particular class contributes to the UI
 {

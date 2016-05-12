@@ -444,3 +444,56 @@ inherit(windmill, shape);
 	 this.indices.push ( 0 ); this.indices.push ( 2 * i + 1 ); this.indices.push ( 2 * i + 2 );
 	 }
 	};
+
+	//////////for floor
+
+		
+function rectangular_strip_floor( numRectangles, points_transform )
+	{
+		triangle_strip.call(this);	
+		if( !arguments.length) return;	// Pass no arguments if you just want to make a dummy object that inherits everything, for making static calls
+		this.populate( this, numRectangles, points_transform );
+		this.init_buffers();
+	}
+inherit(rectangular_strip_floor, triangle_strip);
+
+	rectangular_strip_floor.prototype.populate = function( recipient, numRectangles, points_transform )	
+				{	
+					var offset = recipient.vertices.length;		var index_offset = recipient.indices.length;
+					var vertices = [];
+					var strip_indices = [];
+					var topIdx = 0; var bottomIdx = numRectangles + 1;						
+					
+					for( var i = 0; i <= numRectangles; i++ )
+					{
+						vertices[topIdx] 	= vec3( 0,  .5, topIdx - .5 * numRectangles );		recipient.texture_coords[ topIdx + offset ]    = vec2( topIdx / numRectangles, 1 );
+						vertices[bottomIdx] = vec3( 0, -.5, topIdx - .5 * numRectangles );		recipient.texture_coords[ bottomIdx + offset ] = vec2( topIdx / numRectangles, 0 );
+						strip_indices.push(topIdx++);
+						strip_indices.push(bottomIdx++);
+					}
+					
+					this.init_from_strip_lists(recipient, vertices, strip_indices);
+					
+					for( var i = offset; i < recipient.vertices.length; i++ )
+						recipient.vertices[i] = vec3( mult_vec( points_transform, vec4( recipient.vertices[i], 1 ) ) );						
+					recipient.flat_normals_from_triples( index_offset );
+							
+				}
+
+
+function cube_floor( points_transform )		
+	{
+		shape.call(this);
+		this.populate( this, mat4() );
+		this.init_buffers();
+	}
+inherit(cube_floor, shape);
+
+	cube_floor.prototype.populate = function( recipient, points_transform )
+	{
+			var m_strip = new rectangular_strip_floor(); 
+			for( var i = 0; i < 3; i++ )										// Build a cube by inserting six triangle strips into the lists.
+				for( var j = 0; j < 2; j++ )
+					m_strip.populate( recipient, 1, mult( points_transform, mult( rotation( 90, vec3( i==0, i==1, i==2 ) ), translation( j - .5, 0, 0 ) ) ) );
+	}
+	
