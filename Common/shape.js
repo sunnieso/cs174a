@@ -139,12 +139,12 @@ function shape()
                 lightPositions.push( vec4( -100 , 20, 100, 1 ) ); 
 				// lightPositions.push( vec4( 10 * Math.sin(graphicsState.animation_time/1000), 2, -2, 1 ) );    
 				lightColors.push( vec4( 0, 1, 1, 1 ) );   
-				attenuations.push( .00001 );
+				attenuations.push( .0001 );
 
      			lightPositions.push( vec4( 100 , 20, 100, 1 ) ); 
 				// lightPositions.push( vec4( 10 * Math.sin(graphicsState.animation_time/1000), 2, -2, 1 ) );    
 				lightColors.push( vec4( 1, 1, 0, 1 ) );   
-				attenuations.push( .000001 );
+				attenuations.push( .0001 );
 
 
 				for( var i = 0; i < 4 * N_LIGHTS; i++ )
