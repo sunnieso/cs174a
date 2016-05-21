@@ -8,9 +8,11 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <string.h>
 #include <vector>
 #include <stdio.h>
 #include <stdlib.h>
+#include <algorithm>
 using namespace std;
 
 int g_width;
@@ -23,6 +25,29 @@ struct Ray
 };
 
 // TODO: add structs for spheres, lights and anything else you may need.
+struct Sphere
+{
+    string name;
+    vec3 pos;
+    vec3 scale;
+    vec3 rgb;
+    float Ka, Kd, Ks, Kr;
+    float n;
+};
+
+struct Light
+{
+    string name;
+    vec3 pos;
+    vec3 Irgb;
+};
+
+// input variables
+vec3    g_ambient;
+vec3    g_back;
+Sphere  g_sphere[5];
+Light   g_light[5];
+string  g_outputFileName = "output.ppm";
 
 vector<vec4> g_colors;
 
@@ -56,11 +81,32 @@ float toFloat(const string& s)
 void parseLine(const vector<string>& vs)
 {
     //TODO: add parsing of NEAR, LEFT, RIGHT, BOTTOM, TOP, SPHERE, LIGHT, BACK, AMBIENT, OUTPUT.
-    if (vs[0] == "RES")
-    {
-        g_width = (int)toFloat(vs[1]);
-        g_height = (int)toFloat(vs[2]);
-        g_colors.resize(g_width * g_height);
+    const int num_labels = 11;
+    const string labels[] = { "NEAR", "LEFT", "RIGHT", "BOTTOM", "TOP", "RES", "SPHERE", "LIGHT", "BACK", "AMBIENT", "OUTPUT"};
+    unsigned label_id = find( labels, labels + num_labels, vs[0]) - labels;
+    switch(label_id){
+        case 0:         g_near      = toFloat( vs[1] );         break;
+        case 1:         g_left      = toFloat( vs[1] );         break;
+        case 2:         g_right     = toFloat( vs[1] );         break;
+        case 3:         g_bottom    = toFloat( vs[1] );         break;
+        case 4:         g_top       = toFloat( vs[1] );         break;
+
+        case 5:         g_width     = (int)toFloat(vs[1]);
+                        g_height    = (int)toFloat(vs[2]);
+                        g_colors.resize(g_width * g_height);    break;
+        case 6:      
+        case 7:
+        case 8:         g_back[0]   = toFloat( vs[1] );
+                        g_back[1]   = toFloat( vs[2] );
+                        g_back[2]   = toFloat( vs[3] );         break;
+                            
+        case 9:         g_ambient[0] = toFloat( vs[1] );
+                        g_ambient[1] = toFloat( vs[2] );
+                        g_ambient[2] = toFloat( vs[3] );        break;
+        case 10:        g_outputFileName = vs[1];               break;
+        
+        default:        cout << "Error parsing tag " << label_id << endl;
+                        exit(1);                                break;
     }
 }
 
@@ -177,7 +223,10 @@ void saveFile()
                 buf[y*g_width*3+x*3+i] = (unsigned char)(((float*)g_colors[y*g_width+x])[i] * 255.9f);
     
     // TODO: change file name based on input file name.
-    savePPM(g_width, g_height, "output.ppm", buf);
+    char output[50];
+    memset(output, '\0', sizeof(output));
+    strcpy(output, g_outputFileName.c_str());   // convert std::string to const char* and then to char*
+    savePPM(g_width, g_height, output, buf);
     delete[] buf;
 }
 
