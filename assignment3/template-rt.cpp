@@ -46,7 +46,9 @@ struct Light
 vec3    g_ambient;
 vec3    g_back;
 Sphere  g_sphere[5];
+int num_sphere = 0;
 Light   g_light[5];
+int num_light = 0;
 string  g_outputFileName = "output.ppm";
 
 vector<vec4> g_colors;
@@ -94,8 +96,36 @@ void parseLine(const vector<string>& vs)
         case 5:         g_width     = (int)toFloat(vs[1]);
                         g_height    = (int)toFloat(vs[2]);
                         g_colors.resize(g_width * g_height);    break;
-        case 6:      
+        case 6:         // Sphere
+                        if (num_sphere == 5){  
+                            cout << "Maximum number of sphere is five.\n";
+                        } else if (vs.size() != 17){
+                            cout << "An SPHERE entry requires 16 inputs. Number of given inputs is " << vs.size() -1 << endl;
+                        } else {
+                            g_sphere[num_sphere].name   = vs[1];
+                            g_sphere[num_sphere].pos    = vec3(toFloat(vs[2]),toFloat(vs[3]),toFloat(vs[4]));
+                            g_sphere[num_sphere].scale  = vec3(toFloat(vs[5]),toFloat(vs[6]),toFloat(vs[7]));
+                            g_sphere[num_sphere].rgb    = vec3(toFloat(vs[8]),toFloat(vs[9]),toFloat(vs[10]));
+                            g_sphere[num_sphere].Ka = toFloat(vs[11]);
+                            g_sphere[num_sphere].Kd = toFloat(vs[12]);
+                            g_sphere[num_sphere].Ks = toFloat(vs[13]);
+                            g_sphere[num_sphere].Kr = toFloat(vs[14]);
+                            g_sphere[num_sphere].n  = toFloat(vs[15]);   
+                            num_sphere++;
+                        }
+                        break;
         case 7:
+                        if (num_light == 5){  
+                            cout << "Maximum number of light is five.\n";
+                        } else if (vs.size() != 9){
+                            cout << "An LIGHT entry requires 8 inputs. Number of given inputs is " << vs.size() -1 << endl;
+                        } else {
+                            g_light[num_light].name   = vs[1];
+                            g_light[num_light].pos    = vec3(toFloat(vs[2]),toFloat(vs[3]),toFloat(vs[4]));
+                            g_light[num_light].Irgb   = vec3(toFloat(vs[5]),toFloat(vs[6]),toFloat(vs[7]));
+                            num_light++;
+                        }
+                        break;
         case 8:         g_back[0]   = toFloat( vs[1] );
                         g_back[1]   = toFloat( vs[2] );
                         g_back[2]   = toFloat( vs[3] );         break;
