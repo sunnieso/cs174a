@@ -135,7 +135,8 @@ void parseLine(const vector<string>& vs)
                         g_ambient[2] = toFloat( vs[3] );        break;
         case 10:        g_outputFileName = vs[1];               break;
         
-        default:        cout << "Error parsing tag " << label_id << endl;
+        default:        if(vs[0] == "\n" || vs[0] == "")        break;      // handle blank lines
+                        cout << "Error parsing tag " << label_id << endl;
                         exit(1);                                break;
     }
 }
@@ -175,7 +176,6 @@ void setColor(int ix, int iy, const vec4& color)
     g_colors[iy2 * g_width + ix] = color;
 }
 
-
 // -------------------------------------------------------------------
 // Intersection routine
 
@@ -188,16 +188,20 @@ void setColor(int ix, int iy, const vec4& color)
 vec4 trace(const Ray& ray)
 {
     // TODO: implement your ray tracing routine here.
-    return vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    // return vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    // printf("%f %f %f %f \n",  ray.dir[0], ray.dir[1], ray.dir[2], ray.dir[3]);
+    return ray.dir;
 }
 
+
+float x_ratio_factor, y_ratio_factor;   // pre calculated value declared as global to avoid redundent calculation per pixel. Values are initiated in render()
 vec4 getDir(int ix, int iy)
 {
     // TODO: modify this. This should return the direction from the origin
     // to pixel (ix, iy), normalized.
     vec4 dir;
-    dir = vec4(0.0f, 0.0f, -1.0f, 0.0f);
-    return dir;
+    dir = vec4( g_left + ix * x_ratio_factor, g_top + iy * y_ratio_factor, -g_near, 0.0f );
+    return normalize(dir);
 }
 
 void renderPixel(int ix, int iy)
@@ -211,6 +215,8 @@ void renderPixel(int ix, int iy)
 
 void render()
 {
+    x_ratio_factor = ( g_right - g_left ) / g_width;
+    y_ratio_factor = ( g_top - g_bottom ) / g_height;
     for (int iy = 0; iy < g_height; iy++)
         for (int ix = 0; ix < g_width; ix++)
             renderPixel(ix, iy);
