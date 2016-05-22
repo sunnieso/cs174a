@@ -3,6 +3,9 @@
 //
 
 #define _CRT_SECURE_NO_WARNINGS
+#define INTERSECT_NONE    0
+#define INTERSECT_SPHERE  1
+#define INTERSECT_LIGHT   2
 #include "matm.h"
 #include <iostream>
 #include <fstream>
@@ -29,7 +32,7 @@ struct Sphere
 {
     string name;
     vec3 pos;
-    vec3 scale;
+    vec4 scale;
     vec3 rgb;
     float Ka, Kd, Ks, Kr;
     float n;
@@ -42,13 +45,20 @@ struct Light
     vec3 Irgb;
 };
 
+struct Intersection
+{
+    int type;   // tells us whether the ray intersect with sphere, light source, or nothing
+    vec3 pos;   // closest point of intersection
+    Sphere* sphere;
+    Light* light;
+};
 // input variables
 vec3    g_ambient;
 vec3    g_back;
 Sphere  g_sphere[5];
-int num_sphere = 0;
+int     num_sphere = 0;
 Light   g_light[5];
-int num_light = 0;
+int     num_light = 0;
 string  g_outputFileName = "output.ppm";
 
 vector<vec4> g_colors;
@@ -72,6 +82,11 @@ vec4 toVec4(const string& s1, const string& s2, const string& s3)
     return result;
 }
 
+vec4 toVec4(vec3 old)
+{
+    return vec4(old[0], old[1], old[2], 0.0f);
+}
+
 float toFloat(const string& s)
 {
     stringstream ss(s);
@@ -86,6 +101,7 @@ void parseLine(const vector<string>& vs)
     const int num_labels = 11;
     const string labels[] = { "NEAR", "LEFT", "RIGHT", "BOTTOM", "TOP", "RES", "SPHERE", "LIGHT", "BACK", "AMBIENT", "OUTPUT"};
     unsigned label_id = find( labels, labels + num_labels, vs[0]) - labels;
+
     switch(label_id){
         case 0:         g_near      = toFloat( vs[1] );         break;
         case 1:         g_left      = toFloat( vs[1] );         break;
@@ -104,7 +120,7 @@ void parseLine(const vector<string>& vs)
                         } else {
                             g_sphere[num_sphere].name   = vs[1];
                             g_sphere[num_sphere].pos    = vec3(toFloat(vs[2]),toFloat(vs[3]),toFloat(vs[4]));
-                            g_sphere[num_sphere].scale  = vec3(toFloat(vs[5]),toFloat(vs[6]),toFloat(vs[7]));
+                            g_sphere[num_sphere].scale  = vec4(toFloat(vs[5]),toFloat(vs[6]),toFloat(vs[7]), 1.0f);
                             g_sphere[num_sphere].rgb    = vec3(toFloat(vs[8]),toFloat(vs[9]),toFloat(vs[10]));
                             g_sphere[num_sphere].Ka = toFloat(vs[11]);
                             g_sphere[num_sphere].Kd = toFloat(vs[12]);
@@ -180,7 +196,24 @@ void setColor(int ix, int iy, const vec4& color)
 // Intersection routine
 
 // TODO: add your ray-sphere intersection routine here.
+Intersection find_intersection(const Ray& ray)
+{
+    Intersection retval;
+    retval.type = INTERSECT_NONE;
 
+    // line in vector form: a + tn ==> (0,0,0) + t * ray.dir;
+    // shortest distance between a ray and a point: length( (a-p) - ((a-p) * n)n )  
+    // iterate sphere objects
+    for (int i = 0; i != num_sphere; i++){
+        vec4 sphere_pos = toVec4(g_sphere[i].pos);
+        if( length( sphere_pos - ( dot( sphere_pos, ray.dir ) * ray.dir ) ) <= 1 ){     // intersection with sphere
+            retval.type = INTERSECT_SPHERE;
+            retval.sphere = &(g_sphere[i]);
+        }
+    }
+
+    return retval;
+}
 
 // -------------------------------------------------------------------
 // Ray tracing
@@ -190,7 +223,24 @@ vec4 trace(const Ray& ray)
     // TODO: implement your ray tracing routine here.
     // return vec4(0.0f, 0.0f, 0.0f, 1.0f);
     // printf("%f %f %f %f \n",  ray.dir[0], ray.dir[1], ray.dir[2], ray.dir[3]);
-    return ray.dir;
+    // return ray.dir;
+    // vec3 intersection;
+    vec3 color_local, color_reflect, color_refract, color;
+
+    Intersection intersection = find_intersection(ray);
+
+    if ( intersection.type == INTERSECT_NONE )          color_local = g_back;
+    // else if (intersection.type == INTERSECT_LIGHT )     color_local = intersection.light->Irgb;
+    else if ( intersection.type == INTERSECT_SPHERE )   color_local = intersection.sphere->Ka * intersection.sphere->rgb * g_ambient;    
+    
+    // color_local = vec4();
+    // for(int i = 0; i != num_light; i++){
+    //     color_local += ShadowRay(g_light[i], intersection);
+    // }
+    // color_reflect = trace(reflected_ray );
+    // color_refract = trace(refracted_ray );
+    color = color_local;// + k rfl * color_reflect + k rfa * color_refract;
+    return( color );
 }
 
 
@@ -200,7 +250,7 @@ vec4 getDir(int ix, int iy)
     // TODO: modify this. This should return the direction from the origin
     // to pixel (ix, iy), normalized.
     vec4 dir;
-    dir = vec4( g_left + ix * x_ratio_factor, g_top + iy * y_ratio_factor, -g_near, 0.0f );
+    dir = vec4( g_left + ix * x_ratio_factor, g_bottom + iy * y_ratio_factor, -g_near, 0.0f );
     return normalize(dir);
 }
 
