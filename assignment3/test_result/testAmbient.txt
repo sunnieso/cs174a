@@ -13,7 +13,3 @@ LIGHT l3 -10 5 -5 0 0 0.9
 BACK 1 1 1
 AMBIENT 0.75 0.75 0.75
 OUTPUT testAmbient.ppm
-
-
-
-
