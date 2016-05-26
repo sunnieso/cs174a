@@ -6,6 +6,7 @@
 #define INTERSECT_NONE    0
 #define INTERSECT_SPHERE  1
 #define INTERSECT_LIGHT   2
+#define INT_MAX 2147483647
 #include "matm.h"
 #include <iostream>
 #include <fstream>
@@ -49,7 +50,9 @@ struct Light
 struct Intersection
 {
     int type;   // tells us whether the ray intersect with sphere, light source, or nothing
-    vec4 pos;   // closest point of intersection
+    vec4 point;   // closest point of intersection
+    vec4 normal;
+    float distance;
     Sphere* sphere;
     Light* light;
 };
@@ -124,47 +127,24 @@ void parseLine(const vector<string>& vs)
                         } else if (vs.size() != 17){
                             cout << "An SPHERE entry requires 16 inputs. Number of given inputs is " << vs.size() -1 << endl;
                         } else {
-                            g_sphere[num_sphere].name   = vs[1];
-                            g_sphere[num_sphere].pos    = vec4(toFloat(vs[2]),toFloat(vs[3]),toFloat(vs[4]), 1.0f);
-                            // g_sphere[num_sphere].scale  = vec4(toFloat(vs[5]),toFloat(vs[6]),toFloat(vs[7]), 1.0f);
-                            g_sphere[num_sphere].scaleMatrix[0][0] = toFloat(vs[5]); 
-                            g_sphere[num_sphere].scaleMatrix[0][1] = 0;
-                            g_sphere[num_sphere].scaleMatrix[0][2] = 0; 
-                            g_sphere[num_sphere].scaleMatrix[0][3] = 0; 
-                            g_sphere[num_sphere].scaleMatrix[1][0] = 0;
-                            g_sphere[num_sphere].scaleMatrix[1][1] = toFloat(vs[6]); 
-                            g_sphere[num_sphere].scaleMatrix[1][2] = 0;
-                            g_sphere[num_sphere].scaleMatrix[1][3] = 0; 
-                            g_sphere[num_sphere].scaleMatrix[2][0] = 0; 
-                            g_sphere[num_sphere].scaleMatrix[2][1] = 0;
-                            g_sphere[num_sphere].scaleMatrix[2][2] = toFloat(vs[7]);
-                            g_sphere[num_sphere].scaleMatrix[2][3] = 0; 
-                            g_sphere[num_sphere].scaleMatrix[3][0] = 0; 
-                            g_sphere[num_sphere].scaleMatrix[3][1] = 0;
-                            g_sphere[num_sphere].scaleMatrix[3][2] = 0;
-                            g_sphere[num_sphere].scaleMatrix[3][3] = 1; 
-                            g_sphere[num_sphere].rgb    = vec3(toFloat(vs[8]),toFloat(vs[9]),toFloat(vs[10]));
+                            g_sphere[num_sphere].name = vs[1];
+                            g_sphere[num_sphere].pos  = vec4(toFloat(vs[2]),toFloat(vs[3]),toFloat(vs[4]), 1.0f);
+                            g_sphere[num_sphere].rgb  = vec3(toFloat(vs[8]),toFloat(vs[9]),toFloat(vs[10]));
                             g_sphere[num_sphere].Ka = toFloat(vs[11]);
                             g_sphere[num_sphere].Kd = toFloat(vs[12]);
                             g_sphere[num_sphere].Ks = toFloat(vs[13]);
                             g_sphere[num_sphere].Kr = toFloat(vs[14]);
                             g_sphere[num_sphere].n  = toFloat(vs[15]);   
+                            g_sphere[num_sphere].scaleMatrix         = mat4(); 
+                            g_sphere[num_sphere].scaleMatrix[0][0]   = toFloat(vs[5]);
+                            g_sphere[num_sphere].scaleMatrix[1][1]   = toFloat(vs[6]);
+                            g_sphere[num_sphere].scaleMatrix[2][2]   = toFloat(vs[7]);
+                            g_sphere[num_sphere].scaleMatrix[3][3]   = 1; 
+                            g_sphere[num_sphere].inverseMatrix       = mat4();
                             g_sphere[num_sphere].inverseMatrix[0][0] = 1 / g_sphere[num_sphere].scaleMatrix[0][0]; 
-                            g_sphere[num_sphere].inverseMatrix[0][1] = 0;
-                            g_sphere[num_sphere].inverseMatrix[0][2] = 0; 
-                            g_sphere[num_sphere].inverseMatrix[0][3] = 0; 
-                            g_sphere[num_sphere].inverseMatrix[1][0] = 0;
                             g_sphere[num_sphere].inverseMatrix[1][1] = 1 / g_sphere[num_sphere].scaleMatrix[1][1]; 
-                            g_sphere[num_sphere].inverseMatrix[1][2] = 0;
-                            g_sphere[num_sphere].inverseMatrix[1][3] = 0; 
-                            g_sphere[num_sphere].inverseMatrix[2][0] = 0; 
-                            g_sphere[num_sphere].inverseMatrix[2][1] = 0;
                             g_sphere[num_sphere].inverseMatrix[2][2] = 1 / g_sphere[num_sphere].scaleMatrix[2][2];
-                            g_sphere[num_sphere].inverseMatrix[2][3] = 0; 
-                            g_sphere[num_sphere].inverseMatrix[3][0] = 0; 
-                            g_sphere[num_sphere].inverseMatrix[3][1] = 0;
-                            g_sphere[num_sphere].inverseMatrix[3][2] = 0;
-                            g_sphere[num_sphere].inverseMatrix[3][3] = 1; 
+                            g_sphere[num_sphere].inverseMatrix[3][3] = 1;
                             num_sphere++;
                         }
                         break;
@@ -233,33 +213,22 @@ void setColor(int ix, int iy, const vec4& color)
 // -------------------------------------------------------------------
 // Intersection routine
 
-bool isCollided(const Ray* ray, Sphere* sphere){
-    // reverse calculation
-    // move ray and sphere back to origin
-    vec3 dir = toVec3(ray->dir);
-    vec3 pos = toVec3(ray->origin - sphere->pos);    // ray equation is now x = -dir_pos + dir * t 
-    // inversive scale
-    // dir = mvmult(sphere->inverseMatrix, dir);
-    // pos = mvmult(sphere->inverseMatrix, pos);
-    // for(int i = 0; i != 3; i++){
-    //     pos[i] /= sphere->scale[i];
-    //     dir[i] /= sphere->scale[i];
-    // }
-
-    return length( pos - ( dot( pos, dir ) * dir ) ) < 1;
-}
 
 // TODO: add your ray-sphere intersection routine here.
 Intersection find_closest_intersection(const Ray& ray)
 {
     Intersection retval;
     retval.type = INTERSECT_NONE;
-    Sphere* sphere = NULL; 
-    float curr_distance = -1;
+    Sphere* sphere = g_sphere; 
+    float min_distance = INT_MAX;
+    vec4 min_point = vec4();   // position of closest point
+    vec4 min_normal = vec4();   // normal vector of closest point
+    
     // reverse calculation
     // move ray and sphere back to origin   
     for(int i = 0; i != num_sphere; i++){
         sphere = g_sphere + i;
+        // inverse matrix multiplication. Transform the coord system such that the sphere is a unit sphere centered at origin
         vec4 dir = sphere->inverseMatrix * ray.dir; // ray_dir
         vec4 pos = sphere->inverseMatrix * ( ray.origin - sphere->pos ); // ray_pos
         
@@ -273,40 +242,23 @@ Intersection find_closest_intersection(const Ray& ray)
         float discriminant = b*b - (4*a*c);
         if(discriminant > 0){       // intersect with two points
             retval.type = INTERSECT_SPHERE;
-            retval.sphere = sphere;
             // find the closer point
             float t = ( - b - sqrt(discriminant) ) / ( 2 * a );
-            vec4 dis = sphere->scaleMatrix * ( pos + t*dir );   // scale the point back to what it originally look like.
-
+            vec4 point = sphere->scaleMatrix * ( pos + t*dir ) + sphere->pos;   // scale the point back to what it originally look like.
+            float dis = length(point - ray.origin);
+            // compare with the current cloest point, if any.
+            if ( min_distance > dis ){
+                retval.sphere = sphere;
+                min_distance = dis;
+                min_point = point;
+                min_normal = sphere->scaleMatrix * ( pos + t*dir  - vec4(0,0,0,1.0f));
+            }
         }
 
+        retval.distance = min_distance;
+        retval.point = min_point;
+        retval.normal = min_normal;
     }
-
-
-
-
-    // line in vector form: a + tn ==> (0,0,0) + t * ray.dir;
-    // shortest distance between a ray and a point: length( (a-p) - ((a-p) * n)n )  
-
-    // // iterate light object
-    // for (int i = 0; i != num_light; i++){
-    //     vec4 light_pos = toVec4(g_light[i].pos);
-    //     if( length( light_pos - ( dot( light_pos, ray.dir ) * ray.dir ) ) <= 1 ){     // intersection with sphere
-    //         retval.type = INTERSECT_LIGHT;
-    //         retval.light = &(g_light[i]);
-    //     }
-    // }
-
-    // // iterate sphere objects
-    // for (int i = 0; i != num_sphere; i++){
-    //     // vec4 sphere_pos = toVec4(g_sphere[i].pos);
-    //     // if( length( sphere_pos - ( dot( sphere_pos, ray.dir ) * ray.dir ) ) <= 1 ){     // intersection with sphere
-    //     if (isCollided(&ray, g_sphere + i)){
-    //         retval.type = INTERSECT_SPHERE;
-    //         retval.sphere = g_sphere + i;
-    //     }
-    // }
-
     return retval;
 }
 
@@ -325,12 +277,22 @@ vec4 trace(const Ray& ray)
     Intersection intersection = find_closest_intersection(ray);
 
     if (intersection.type == INTERSECT_LIGHT )          color_local = intersection.light->Irgb;
-    else if ( intersection.type == INTERSECT_SPHERE )   color_local = intersection.sphere->Ka * intersection.sphere->rgb * g_ambient;    
+    else if ( intersection.type == INTERSECT_SPHERE )   {
+        color_local = intersection.sphere->Ka * intersection.sphere->rgb * g_ambient;   
+        
+        // Ray reflected_ray;
+        // reflected_ray.origin = intersection.point;
+        // reflected_ray.dir    = ray.dir + 2 * intersection.normal;
+
+        // color_reflect = toVec3( trace( reflected_ray ));
+        // color_local += intersection.sphere->Kr * color_reflect;
+    }
     else                                                color_local = g_back;
     // color_local = vec4();
     // for(int i = 0; i != num_light; i++){
     //     color_local += ShadowRay(g_light[i], intersection);
     // }
+
     // color_reflect = trace(reflected_ray );
     // color_refract = trace(refracted_ray );
     color = color_local;// + k rfl * color_reflect + k rfa * color_refract;
