@@ -32,8 +32,8 @@ struct Sphere
 {
     string name;
     vec4 pos;
-    vec4 scale;
-    mat3 inverseMatrix;
+    mat4 inverseMatrix;
+    mat4 scaleMatrix;
     vec3 rgb;
     float Ka, Kd, Ks, Kr;
     float n;
@@ -126,22 +126,45 @@ void parseLine(const vector<string>& vs)
                         } else {
                             g_sphere[num_sphere].name   = vs[1];
                             g_sphere[num_sphere].pos    = vec4(toFloat(vs[2]),toFloat(vs[3]),toFloat(vs[4]), 1.0f);
-                            g_sphere[num_sphere].scale  = vec4(toFloat(vs[5]),toFloat(vs[6]),toFloat(vs[7]), 1.0f);
+                            // g_sphere[num_sphere].scale  = vec4(toFloat(vs[5]),toFloat(vs[6]),toFloat(vs[7]), 1.0f);
+                            g_sphere[num_sphere].scaleMatrix[0][0] = toFloat(vs[5]); 
+                            g_sphere[num_sphere].scaleMatrix[0][1] = 0;
+                            g_sphere[num_sphere].scaleMatrix[0][2] = 0; 
+                            g_sphere[num_sphere].scaleMatrix[0][3] = 0; 
+                            g_sphere[num_sphere].scaleMatrix[1][0] = 0;
+                            g_sphere[num_sphere].scaleMatrix[1][1] = toFloat(vs[6]); 
+                            g_sphere[num_sphere].scaleMatrix[1][2] = 0;
+                            g_sphere[num_sphere].scaleMatrix[1][3] = 0; 
+                            g_sphere[num_sphere].scaleMatrix[2][0] = 0; 
+                            g_sphere[num_sphere].scaleMatrix[2][1] = 0;
+                            g_sphere[num_sphere].scaleMatrix[2][2] = toFloat(vs[7]);
+                            g_sphere[num_sphere].scaleMatrix[2][3] = 0; 
+                            g_sphere[num_sphere].scaleMatrix[3][0] = 0; 
+                            g_sphere[num_sphere].scaleMatrix[3][1] = 0;
+                            g_sphere[num_sphere].scaleMatrix[3][2] = 0;
+                            g_sphere[num_sphere].scaleMatrix[3][3] = 1; 
                             g_sphere[num_sphere].rgb    = vec3(toFloat(vs[8]),toFloat(vs[9]),toFloat(vs[10]));
                             g_sphere[num_sphere].Ka = toFloat(vs[11]);
                             g_sphere[num_sphere].Kd = toFloat(vs[12]);
                             g_sphere[num_sphere].Ks = toFloat(vs[13]);
                             g_sphere[num_sphere].Kr = toFloat(vs[14]);
                             g_sphere[num_sphere].n  = toFloat(vs[15]);   
-                            g_sphere[num_sphere].inverseMatrix[0][0] = 1 / g_sphere[num_sphere].scale[0]; 
+                            g_sphere[num_sphere].inverseMatrix[0][0] = 1 / g_sphere[num_sphere].scaleMatrix[0][0]; 
                             g_sphere[num_sphere].inverseMatrix[0][1] = 0;
                             g_sphere[num_sphere].inverseMatrix[0][2] = 0; 
+                            g_sphere[num_sphere].inverseMatrix[0][3] = 0; 
                             g_sphere[num_sphere].inverseMatrix[1][0] = 0;
-                            g_sphere[num_sphere].inverseMatrix[1][1] = 1 / g_sphere[num_sphere].scale[1]; 
+                            g_sphere[num_sphere].inverseMatrix[1][1] = 1 / g_sphere[num_sphere].scaleMatrix[1][1]; 
                             g_sphere[num_sphere].inverseMatrix[1][2] = 0;
+                            g_sphere[num_sphere].inverseMatrix[1][3] = 0; 
                             g_sphere[num_sphere].inverseMatrix[2][0] = 0; 
                             g_sphere[num_sphere].inverseMatrix[2][1] = 0;
-                            g_sphere[num_sphere].inverseMatrix[2][2] = 1 / g_sphere[num_sphere].scale[2];
+                            g_sphere[num_sphere].inverseMatrix[2][2] = 1 / g_sphere[num_sphere].scaleMatrix[2][2];
+                            g_sphere[num_sphere].inverseMatrix[2][3] = 0; 
+                            g_sphere[num_sphere].inverseMatrix[3][0] = 0; 
+                            g_sphere[num_sphere].inverseMatrix[3][1] = 0;
+                            g_sphere[num_sphere].inverseMatrix[3][2] = 0;
+                            g_sphere[num_sphere].inverseMatrix[3][3] = 1; 
                             num_sphere++;
                         }
                         break;
@@ -216,8 +239,8 @@ bool isCollided(const Ray* ray, Sphere* sphere){
     vec3 dir = toVec3(ray->dir);
     vec3 pos = toVec3(ray->origin - sphere->pos);    // ray equation is now x = -dir_pos + dir * t 
     // inversive scale
-    dir = mvmult(sphere.inverseMatrix, dir);
-    pos = mvmult(sphere.inverseMatrix, pos);
+    // dir = mvmult(sphere->inverseMatrix, dir);
+    // pos = mvmult(sphere->inverseMatrix, pos);
     // for(int i = 0; i != 3; i++){
     //     pos[i] /= sphere->scale[i];
     //     dir[i] /= sphere->scale[i];
@@ -227,10 +250,40 @@ bool isCollided(const Ray* ray, Sphere* sphere){
 }
 
 // TODO: add your ray-sphere intersection routine here.
-Intersection find_intersection(const Ray& ray)
+Intersection find_closest_intersection(const Ray& ray)
 {
     Intersection retval;
     retval.type = INTERSECT_NONE;
+    Sphere* sphere = NULL; 
+    float curr_distance = -1;
+    // reverse calculation
+    // move ray and sphere back to origin   
+    for(int i = 0; i != num_sphere; i++){
+        sphere = g_sphere + i;
+        vec4 dir = sphere->inverseMatrix * ray.dir; // ray_dir
+        vec4 pos = sphere->inverseMatrix * ( ray.origin - sphere->pos ); // ray_pos
+        
+        // http://www.ccs.neu.edu/home/fell/CSU540/programs/RayTracingFormulas.htm
+        // let ax^2 + bx + c
+        float a = dot(dir,dir);     //  a = ray_dir * ray_dir
+        float b = 2 * dot(dir, pos);//  b = 2 (ray_dir * (ray_pos - sphere_pos))
+        float c = dot(pos,pos) - 1; //  c = sphere_pos^2 + ray_pos^2 - 2*(sphere_pos * ray_pos) 
+        
+        // discriminant b^2 - 4ac
+        float discriminant = b*b - (4*a*c);
+        if(discriminant > 0){       // intersect with two points
+            retval.type = INTERSECT_SPHERE;
+            retval.sphere = sphere;
+            // find the closer point
+            float t = ( - b - sqrt(discriminant) ) / ( 2 * a );
+            vec4 dis = sphere->scaleMatrix * ( pos + t*dir );   // scale the point back to what it originally look like.
+
+        }
+
+    }
+
+
+
 
     // line in vector form: a + tn ==> (0,0,0) + t * ray.dir;
     // shortest distance between a ray and a point: length( (a-p) - ((a-p) * n)n )  
@@ -244,15 +297,15 @@ Intersection find_intersection(const Ray& ray)
     //     }
     // }
 
-    // iterate sphere objects
-    for (int i = 0; i != num_sphere; i++){
-        // vec4 sphere_pos = toVec4(g_sphere[i].pos);
-        // if( length( sphere_pos - ( dot( sphere_pos, ray.dir ) * ray.dir ) ) <= 1 ){     // intersection with sphere
-        if (isCollided(&ray, g_sphere + i)){
-            retval.type = INTERSECT_SPHERE;
-            retval.sphere = g_sphere + i;
-        }
-    }
+    // // iterate sphere objects
+    // for (int i = 0; i != num_sphere; i++){
+    //     // vec4 sphere_pos = toVec4(g_sphere[i].pos);
+    //     // if( length( sphere_pos - ( dot( sphere_pos, ray.dir ) * ray.dir ) ) <= 1 ){     // intersection with sphere
+    //     if (isCollided(&ray, g_sphere + i)){
+    //         retval.type = INTERSECT_SPHERE;
+    //         retval.sphere = g_sphere + i;
+    //     }
+    // }
 
     return retval;
 }
@@ -269,7 +322,7 @@ vec4 trace(const Ray& ray)
     // vec3 intersection;
     vec3 color_local, color_reflect, color_refract, color;
 
-    Intersection intersection = find_intersection(ray);
+    Intersection intersection = find_closest_intersection(ray);
 
     if (intersection.type == INTERSECT_LIGHT )          color_local = intersection.light->Irgb;
     else if ( intersection.type == INTERSECT_SPHERE )   color_local = intersection.sphere->Ka * intersection.sphere->rgb * g_ambient;    
