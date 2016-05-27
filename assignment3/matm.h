@@ -369,6 +369,10 @@ mat3 transpose( const mat3& A ) {
         A[2][0], A[2][1], A[2][2] );
 }
 
+
+
+
+
 //----------------------------------------------------------------------------
 //
 //  mat4.h - 4D square matrix
@@ -937,6 +941,14 @@ mat4 identity()
     for(int i=0; i<4; i++) for(int j=0; j<4; j++) c[i][j]=0.0f;
     for(int i=0; i<4; i++) c[i][i] = 1.0f;
     return c;
+}
+
+
+inline
+mat3 toMat3( const mat4& A ) {
+    return mat3( A[0][0], A[0][1], A[0][2],
+        A[1][0], A[1][1], A[1][2],
+        A[2][0], A[2][1], A[2][2] );
 }
 
 #endif // __ANGEL_MAT_H__
