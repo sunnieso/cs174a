@@ -3,15 +3,21 @@
 //
 
 #define _CRT_SECURE_NO_WARNINGS
-#define INTERSECT_NONE    0
-#define INTERSECT_SPHERE  1
-#define INTERSECT_HOLLOW_SPHERE   2
-#define TYPE_ORIGINAL_RAY  0
-#define TYPE_SHADOW_RAY    1
-#define TYPE_REFLECTED_RAY 2
+
+// Define constants
 #define INT_MAX 2147483647
 #define DELTA_T 0.0001
 #define NUMBER_OF_REFLECTION 3
+#define MAX_NUM_SPHERE 5
+#define MAX_NUM_LIGHT 5
+// intersection status
+#define INTERSECT_NONE    0
+#define INTERSECT_SPHERE  1
+// ray type
+#define TYPE_ORIGINAL_RAY  0
+#define TYPE_SHADOW_RAY    1
+#define TYPE_REFLECTED_RAY 2
+
 #include "matm.h"
 #include <math.h>
 #include <iostream>
@@ -32,7 +38,7 @@ struct Ray
 {
     vec4 origin;
     vec4 dir;
-    int type;  // original rays or reflected rays.
+    int type;  // original ray or shadow ray or reflected ray.
 };
 
 // TODO: add structs for spheres, lights and anything else you may need.
@@ -56,21 +62,22 @@ struct Light
 
 struct Intersection
 {
-    int type;   // tells us whether the ray intersect with sphere, light source, or nothing
+    int type;     // tells us whether the ray intersect with sphere, light source, or nothing
     vec4 point;   // closest point of intersection
     vec4 normal;
     float distance;
     Sphere* sphere;
     Light* light;
 };
-// input variables
-vec3    g_ambient;
-vec3    g_back;
+// parsing input variables
+vec3    g_ambient;  // ambient color
+vec3    g_back;     // background color
 Sphere  g_sphere[5];
-int     num_sphere = 0;
 Light   g_light[5];
-int     num_light = 0;
 string  g_outputFileName = "output.ppm";
+
+int     num_sphere = 0;
+int     num_light = 0;
 
 vector<vec4> g_colors;
 
@@ -129,7 +136,7 @@ void parseLine(const vector<string>& vs)
                         g_height    = (int)toFloat(vs[2]);
                         g_colors.resize(g_width * g_height);    break;
         case 6:         // Sphere
-                        if (num_sphere == 5){  
+                        if (num_sphere == MAX_NUM_SPHERE){  
                             cout << "Maximum number of sphere is five.\n";
                         } else if (vs.size() != 17){
                             cout << "An SPHERE entry requires 16 inputs. Number of given inputs is " << vs.size() -1 << endl;
@@ -148,7 +155,7 @@ void parseLine(const vector<string>& vs)
                         }
                         break;
         case 7:
-                        if (num_light == 5){  
+                        if (num_light == MAX_NUM_LIGHT){  
                             cout << "Maximum number of light is five.\n";
                         } else if (vs.size() != 9){
                             cout << "An LIGHT entry requires 8 inputs. Number of given inputs is " << vs.size() -1 << endl;
@@ -228,22 +235,18 @@ Intersection find_closest_intersection(const Ray& ray, Sphere* excluded_sphere=N
     // SPHERE: reverse calculation
     for(int i = 0; i != num_sphere; i++){
         sphere = g_sphere + i;
-        if(excluded_sphere == sphere){
-            // cout << "exclued" << endl;
-            continue;
-        }
+        if(excluded_sphere == sphere)   continue;
+
         // inverse matrix multiplication. Transform the coord system such that the sphere is a unit sphere centered at origin
         vec4 dir = sphere->inverseMatrix * ray.dir;  // ray_dir
         vec4 pos = sphere->inverseMatrix * ( ray.origin - sphere->pos); // ray_pos
 
-        // http://www.ccs.neu.edu/home/fell/CSU540/programs/RayTracingFormulas.htm
         // let ax^2 + bx + c
-        float a = dot( dir, dir );     //  a = ray_dir * ray_dir
-        float b = dot( dir, pos );//  b = 2 (ray_dir * (ray_pos - sphere_pos))
-        float c = dot( pos, pos ) - 1; //  c = sphere_pos^2 + ray_pos^2 - 2*(sphere_pos * ray_pos) 
-        
-        // discriminant b^2 - 4ac
-        float discriminant = b*b - ( a*c );
+        float a = dot( dir, dir );          //  a = ray_dir * ray_dir
+        float b = dot( dir, pos );          //  b = 2 (ray_dir * (ray_pos - sphere_pos))
+        float c = dot( pos, pos ) - 1;      //  c = sphere_pos^2 + ray_pos^2 - 2*(sphere_pos * ray_pos) 
+        float discriminant = b*b - ( a*c ); //  discriminant b^2 - 4ac
+
         if(discriminant > 0){       // intersect with two points
             // find the closer point using hit time t
             float t1, t2, t;
@@ -254,43 +257,42 @@ Intersection find_closest_intersection(const Ray& ray, Sphere* excluded_sphere=N
              *  For reflected rays  : t > 0
              */
 
+            // two solutions 
             t1 = ( - b - sqrt(discriminant) ) / ( a );
             t2 = ( - b + sqrt(discriminant) ) / ( a );
 
+            // determine value of t
             if ( ray.type == TYPE_ORIGINAL_RAY ){
                 if ( t2 < 1 )   continue;   // sphere completely outside of view
-                if ( t1 < 1 ) { t = t2; sphere_type = INTERSECT_HOLLOW_SPHERE; }
-                else          { t = t1; sphere_type = INTERSECT_SPHERE; }
-
+                if ( t1 < 1 )   t = t2; 
+                else            t = t1; 
             } else if ( ray.type == TYPE_SHADOW_RAY ){
                 t = t1;
                 if ( t <= DELTA_T) 
                     t = t2;
-                if ( t <= DELTA_T) //( t >= 1 )
+                if ( t <= DELTA_T) 
                     continue;
-                sphere_type = INTERSECT_SPHERE; 
             } else {    // TYPE_REFLECTED_RAY
                 t = t1;
                 if ( t <= 0 )
                     t = t2;
                 if ( t <= 0 )
                     continue;   
-                sphere_type = INTERSECT_SPHERE; 
             }
 
-            vec4 point =  ray.origin + t * ray.dir; // sphere->scaleMatrix * ( pos + t*dir ) + sphere->pos;//  // scale the point back to what it originally look like.
-            float dis = length(point - ray.origin);
+            vec4 point =  ray.origin + t * ray.dir; // intersection of the ray and the sphere
+            float dis = length(point - ray.origin); // distance between ray.origin and the intersection point
+
             // compare with the current cloest point, if any.
             if ( min_distance > dis ){
-                retval.type = sphere_type;
+                retval.type = INTERSECT_SPHERE; 
                 retval.sphere = sphere;
                 min_distance = dis;
                 min_point = point;
-                min_normal = normalize( sphere->inverseMatrix * sphere->inverseMatrix * (point - sphere->pos) ); //normalize(sphere->scaleMatrix * ( pos + t*dir)); //
+                min_normal = normalize( sphere->inverseMatrix * sphere->inverseMatrix * (point - sphere->pos) );
             }
         }
     }
-    
 
     retval.distance = min_distance;
     retval.point = min_point;
@@ -298,9 +300,10 @@ Intersection find_closest_intersection(const Ray& ray, Sphere* excluded_sphere=N
     return retval;
 }
 
-// return pixel color. if the point is in shadow, no contribution from the light source, otherwise(no intersection) pixel color == local illumination 
+// return pixel color. if the point is in shadow, no contribution from the light source, otherwise(no intersection) pixel color == local illumination (diffuse + specular)
 vec3 shadow_ray(Light* light, Intersection& P, const Ray& viewer_ray){
     vec3 color; // return value
+
     // ray from point P to the light source
     Ray ray;
     ray.origin = P.point;
@@ -325,18 +328,17 @@ vec3 shadow_ray(Light* light, Intersection& P, const Ray& viewer_ray){
 }   
 // -------------------------------------------------------------------
 // Ray tracing
+// implement ray tracing
 
 vec4 trace(const Ray& ray, int reflect_level=0, Sphere* excluded_sphere=NULL)
 {
-    // TODO: implement your ray tracing routine here.
-
     if ( reflect_level == NUMBER_OF_REFLECTION) 
         return vec4();
 
     vec3 color_local, color_reflect, color;
     Intersection intersection = find_closest_intersection(ray,excluded_sphere);
 
-    if ( intersection.type == INTERSECT_SPHERE || intersection.type == INTERSECT_HOLLOW_SPHERE)   {
+    if ( intersection.type == INTERSECT_SPHERE )   {
         // ambient color of the object
         color_local = intersection.sphere->Ka * intersection.sphere->rgb * g_ambient; 
 
@@ -350,12 +352,14 @@ vec4 trace(const Ray& ray, int reflect_level=0, Sphere* excluded_sphere=NULL)
         reflected_ray.origin = intersection.point;
         reflected_ray.dir    = normalize( 2 * intersection.normal * dot(intersection.normal, -ray.dir ) + ray.dir ); // R = 2 * N * N_dot_L - L
         reflected_ray.type   = TYPE_REFLECTED_RAY;
-        color_reflect = intersection.sphere->Kr * toVec3( trace( reflected_ray, reflect_level+1, intersection.sphere ));
-    } else if (ray.type == TYPE_ORIGINAL_RAY){     // this is first level ray
+        color_reflect        = intersection.sphere->Kr * toVec3( trace( reflected_ray, reflect_level+1, intersection.sphere ));
+
+    } else if (ray.type == TYPE_ORIGINAL_RAY){     
         color_local = g_back;
-    } else {  // this is reflected ray
-        // do nothing.
     }
+    // } else {  // this is TYPE_REFLECTED_RAY
+    //     // do nothing.
+    // }
 
     color = color_local + color_reflect;
 
@@ -434,7 +438,7 @@ void saveFile()
                 buf[y*g_width*3+x*3+i] = (unsigned char)(((float*)g_colors[y*g_width+x])[i] * 255.9f);
     
     // TODO: change file name based on input file name.
-    char output[50];
+    char output[21];
     memset(output, '\0', sizeof(output));
     strcpy(output, g_outputFileName.c_str());   // convert std::string to const char* and then to char*
     savePPM(g_width, g_height, output, buf);
