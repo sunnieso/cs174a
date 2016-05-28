@@ -5,7 +5,10 @@
 #define _CRT_SECURE_NO_WARNINGS
 #define INTERSECT_NONE    0
 #define INTERSECT_SPHERE  1
-#define INTERSECT_BEFORE_NEARPLANE   2
+#define INTERSECT_HOLLOW_SPHERE   2
+#define TYPE_ORIGINAL_RAY  0
+#define TYPE_SHADOW_RAY    1
+#define TYPE_REFLECTED_RAY 2
 #define INT_MAX 2147483647
 #define DELTA_T 0.0001
 #define MAX_T   1
@@ -29,6 +32,7 @@ struct Ray
 {
     vec4 origin;
     vec4 dir;
+    int type;  // original rays or reflected rays.
 };
 
 // TODO: add structs for spheres, lights and anything else you may need.
@@ -139,7 +143,8 @@ void parseLine(const vector<string>& vs)
                             g_sphere[num_sphere].Kr = toFloat(vs[14]);
                             g_sphere[num_sphere].n  = toFloat(vs[15]);   
                             g_sphere[num_sphere].scaleMatrix   = Scale(toFloat(vs[5]),toFloat(vs[6]),toFloat(vs[7]));
-                            g_sphere[num_sphere].inverseMatrix = Scale(1 / g_sphere[num_sphere].scaleMatrix[0][0], 1 / g_sphere[num_sphere].scaleMatrix[1][1], 1 / g_sphere[num_sphere].scaleMatrix[2][2]);
+                            InvertMatrix(g_sphere[num_sphere].scaleMatrix, g_sphere[num_sphere].inverseMatrix);
+                            // g_sphere[num_sphere].inverseMatrix = Scale(1 / g_sphere[num_sphere].scaleMatrix[0][0], 1 / g_sphere[num_sphere].scaleMatrix[1][1], 1 / g_sphere[num_sphere].scaleMatrix[2][2]);
                             num_sphere++;
                         }
                         break;
@@ -210,7 +215,7 @@ void setColor(int ix, int iy, const vec4& color)
 
 
 // TODO: add your ray-sphere intersection routine here.
-Intersection find_closest_intersection(const Ray& ray)
+Intersection find_closest_intersection(const Ray& ray, Sphere* excluded_sphere=NULL)
 {
     Intersection retval;
     retval.type = INTERSECT_NONE;
@@ -218,51 +223,76 @@ Intersection find_closest_intersection(const Ray& ray)
     float min_distance = INT_MAX;
     vec4 min_point = vec4();   // position of closest point
     vec4 min_normal = vec4();   // normal vector of closest point
+    int sphere_type = 0;
     
 
     // SPHERE: reverse calculation
     for(int i = 0; i != num_sphere; i++){
         sphere = g_sphere + i;
+        if(excluded_sphere == sphere){
+            // cout << "exclued" << endl;
+            continue;
+        }
         // inverse matrix multiplication. Transform the coord system such that the sphere is a unit sphere centered at origin
         vec4 dir = normalize(sphere->inverseMatrix * ray.dir); // ray_dir
         vec4 pos = sphere->inverseMatrix * ( ray.origin - sphere->pos); // ray_pos
-        
         // http://www.ccs.neu.edu/home/fell/CSU540/programs/RayTracingFormulas.htm
         // let ax^2 + bx + c
-        float a = dot(dir,dir);     //  a = ray_dir * ray_dir
-        float b = dot(dir, pos);//  b = 2 (ray_dir * (ray_pos - sphere_pos))
-        float c = dot(pos,pos) - 1; //  c = sphere_pos^2 + ray_pos^2 - 2*(sphere_pos * ray_pos) 
+        float a = dot( dir, dir );     //  a = ray_dir * ray_dir
+        float b = dot( dir, pos );//  b = 2 (ray_dir * (ray_pos - sphere_pos))
+        float c = dot( pos, pos ) - 1; //  c = sphere_pos^2 + ray_pos^2 - 2*(sphere_pos * ray_pos) 
         
         // discriminant b^2 - 4ac
-        float discriminant = b*b - (a*c);
+        float discriminant = b*b - ( a*c );
         if(discriminant > 0){       // intersect with two points
-            // find the closer point
-            float t = ( - b - sqrt(discriminant) ) / ( a );
+            // find the closer point using hit time t
+            float t1, t2, t;
+            /*
+             * hit time "t" validity:
+             *  For original rays   : t > 1
+             *  For shadow rays     : DELTA_T < t < 1
+             *  For reflected rays  : t > 0
+             */
 
-            // check validity of t
-            if ( t < DELTA_T )  // only consider positive direction 
-                t = ( - b + sqrt(discriminant) ) / ( a );
-                if ( t < DELTA_T) 
+            t1 = ( - b - sqrt(discriminant) ) / ( a );
+            t2 = ( - b + sqrt(discriminant) ) / ( a );
+
+            if ( ray.type == TYPE_ORIGINAL_RAY ){
+                if ( t2 < 1 )   continue;   // sphere completely outside of view
+                if ( t1 < 1 ) { t = t2; sphere_type = INTERSECT_HOLLOW_SPHERE; }
+                else          { t = t1; sphere_type = INTERSECT_SPHERE; }
+
+            } else if ( ray.type == TYPE_SHADOW_RAY ){
+                sphere_type = INTERSECT_SPHERE; 
+                t = t1;
+                if ( t <= DELTA_T) 
+                    t = t2;
+                if ( t <= DELTA_T) //( t >= 1 )
                     continue;
+            } else {    // TYPE_REFLECTED_RAY
+                sphere_type = INTERSECT_SPHERE; 
+                t = t1;
+                if ( t <= 0 )
+                    t = t2;
+                if ( t <= 0 )
+                    continue;   
+            }
 
-            vec4 point = sphere->scaleMatrix * ( pos + t*dir ) + sphere->pos;   // scale the point back to what it originally look like.
+            // find untransformed t_h
+            // float t_h = 
+            vec4 point =  sphere->scaleMatrix * ( pos + t*dir ) + sphere->pos;//ray.origin + t * ray.dir; //   // scale the point back to what it originally look like.
             float dis = length(point - ray.origin);
             // compare with the current cloest point, if any.
             if ( min_distance > dis ){
-                // if (t < 1){
-                    // retval.type = INTERSECT_BEFORE_NEARPLANE;
-                // } else {
-                    retval.type = INTERSECT_SPHERE;
-                // }
+                retval.type = sphere_type;
                 retval.sphere = sphere;
                 min_distance = dis;
                 min_point = point;
-                min_normal = normalize(sphere->scaleMatrix * ( pos + t*dir));
+                min_normal = normalize(  sphere->inverseMatrix * ( point - sphere->pos ) ); //normalize(sphere->scaleMatrix * ( pos + t*dir)); //
             }
         }
     }
     
-    // cout << endl;
 
     retval.distance = min_distance;
     retval.point = min_point;
@@ -272,25 +302,22 @@ Intersection find_closest_intersection(const Ray& ray)
 
 // return pixel color. if the point is in shadow, no contribution from the light source, otherwise(no intersection) pixel color == local illumination 
 vec3 shadow_ray(Light* light, Intersection& P, const Ray& viewer_ray){
-    vec3 color;
+    vec3 color; // return value
     // ray from point P to the light source
     Ray ray;
     ray.origin = P.point;
     ray.dir = normalize( light->pos - P.point );
-    // cout << "shadow: " << ray.origin;
+    ray.type = TYPE_SHADOW_RAY;
+
     Intersection intersection = find_closest_intersection(ray);
-    // cout << intersection.type << endl;
+
     if (intersection.type == INTERSECT_NONE){
-        // cout << "none" << endl;
-        float N_dot_L = dot( P.normal, ray.dir);
-        // R = 2 * N * N_dot_L - L
-        float R_dot_V = dot( 2*P.normal*N_dot_L - ray.dir,  -viewer_ray.dir);
+        float N_dot_L = dot( P.normal, ray.dir);    
+        float R_dot_V = dot( 2*P.normal*N_dot_L - ray.dir,  -viewer_ray.dir);   // R = 2 * N * N_dot_L - L
 
         // diffuse
         if (N_dot_L > 0){    // if N dot L < 0, then no contribution from diffuse
             color = P.sphere->Kd * light->Irgb * N_dot_L * P.sphere->rgb;
-            // cout << color << "\tKd: " << P.sphere->Kd << " \tI: " << light->Irgb  << "\tdot: " <<  N_dot_L << "\tsphere: " << P.sphere->rgb << endl;
-            // color = P.sphere->rgb;
         }
 
         // specular
@@ -303,18 +330,17 @@ vec3 shadow_ray(Light* light, Intersection& P, const Ray& viewer_ray){
 // -------------------------------------------------------------------
 // Ray tracing
 
-vec4 trace(const Ray& ray, int reflect_level=0)
+vec4 trace(const Ray& ray, int reflect_level=0, Sphere* excluded_sphere=NULL)
 {
     // TODO: implement your ray tracing routine here.
 
-    if ( reflect_level == 2) 
+    if ( reflect_level == 3) 
         return vec4();
 
-    vec3 color_local, color_reflect, color_refract, color;
+    vec3 color_local, color_reflect, color;
+    Intersection intersection = find_closest_intersection(ray,excluded_sphere);
 
-    Intersection intersection = find_closest_intersection(ray);
-
-    if ( intersection.type == INTERSECT_SPHERE )   {
+    if ( intersection.type == INTERSECT_SPHERE || intersection.type == INTERSECT_HOLLOW_SPHERE)   {
         // ambient color of the object
         color_local = intersection.sphere->Ka * intersection.sphere->rgb * g_ambient; 
 
@@ -327,23 +353,20 @@ vec4 trace(const Ray& ray, int reflect_level=0)
         Ray reflected_ray;
         reflected_ray.origin = intersection.point;
         reflected_ray.dir    = normalize(2 * intersection.normal * dot(intersection.normal, -ray.dir ) + ray.dir ); // R = 2 * N * N_dot_L - L
-
-        color_reflect = toVec3( trace( reflected_ray, reflect_level+1 ));
-        color_local += intersection.sphere->Kr * color_reflect;
-    } else {
+        reflected_ray.type   = TYPE_REFLECTED_RAY;
+        color_reflect = intersection.sphere->Kr * toVec3( trace( reflected_ray, reflect_level+1, intersection.sphere ));
+    } else if (reflect_level == 0){     // this is first level ray
         color_local = g_back;
+    } else {  // this is reflected ray
+        // do nothing.
     }
-    // color_local = vec4();
 
-    // color_reflect = trace(reflected_ray );
-    // color_refract = trace(refracted_ray );
-
+    color = color_local + color_reflect;// + k rfl * color_reflect + k rfa * color_refract;
     // check overflow
     for ( int i = 0; i != 3; i++)   
-        if ( color_local[i] > 1 )
-            color_local[i] = 1;
+        if ( color[i] > 1 )
+            color[i] = 1;
 
-    color = color_local;// + k rfl * color_reflect + k rfa * color_refract;
     return( color );
 }
 
@@ -363,6 +386,7 @@ void renderPixel(int ix, int iy)
     Ray ray;
     ray.origin = vec4(0.0f, 0.0f, 0.0f, 1.0f);
     ray.dir = getDir(ix, iy);
+    ray.type = TYPE_ORIGINAL_RAY;
     vec4 color = trace(ray);
     setColor(ix, iy, color);
 }
